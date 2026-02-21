@@ -2,8 +2,11 @@ using UnityEngine;
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.Json;
 using LLama;
 using LLama.Common;
+using LLama.Grammars;
 using LLama.Native;
 using Cysharp.Threading.Tasks;
 using TMPro;
@@ -28,6 +31,41 @@ public class LLamaSharpTestScript : MonoBehaviour
     public TMP_InputField Input;
     public TMP_Dropdown SessionSelector;
     public Button Submit;
+    public enum NpcBehavior
+    {
+        Guard,
+        Cautious,
+        Aggressive,
+        Scout
+    }
+
+    [Serializable]
+    public struct NpcDecisionRequest
+    {
+        public Vector2Int NpcGrid;
+        public Vector2Int PlayerPingGrid;
+        public NpcBehavior Behavior;
+        public int GridWidth;
+        public int GridHeight;
+        public int NearRadius;
+    }
+
+    [Serializable]
+    public struct NpcDecision
+    {
+        public string action;
+        public int target_x;
+        public int target_y;
+    }
+
+    private const string NpcDecisionGrammarGbnf =
+        "root ::= ws \"{\" ws \"\\\"action\\\"\" ws \":\" ws action ws \",\" ws \"\\\"target_x\\\"\" ws \":\" ws int ws \",\" ws \"\\\"target_y\\\"\" ws \":\" ws int ws \"}\" ws\n" +
+        "action ::= \"\\\"hold\\\"\" | \"\\\"move_to_ping\\\"\" | \"\\\"move_near_self\\\"\"\n" +
+        "int ::= \"-\"? [0-9] [0-9]*\n" +
+        "ws ::= [ \\t\\n\\r]*\n";
+
+    private static readonly Grammar NpcDecisionGrammar = Grammar.Parse(NpcDecisionGrammarGbnf, "root");
+    private static readonly JsonSerializerOptions NpcDecisionJsonOptions = new JsonSerializerOptions { IncludeFields = true };
 
     private ExecutorBaseState _emptyState;
     private List<ExecutorBaseState> _executorStates = new List<ExecutorBaseState>();
@@ -156,6 +194,148 @@ public class LLamaSharpTestScript : MonoBehaviour
     }
 
 
+
+    public async UniTask<NpcDecision> DecideNpcGridAsync(NpcDecisionRequest request, CancellationToken cancel = default)
+    {
+        if (_chatSessions.Count == 0)
+        {
+            throw new InvalidOperationException("LLama runtime is not initialized yet.");
+        }
+
+        request = NormalizeNpcDecisionRequest(request);
+
+        var executor = _chatSessions[_activeSession].Executor as InteractiveExecutor;
+        if (executor == null)
+        {
+            throw new InvalidOperationException("Active executor is not InteractiveExecutor.");
+        }
+
+        var savedState = executor.GetStateData();
+        try
+        {
+            var planningSession = new ChatSession(executor);
+            planningSession.AddSystemMessage("You are an NPC tactical planner for a grid game. Respond with exactly one JSON object.");
+
+            using var grammarHandle = NpcDecisionGrammar.CreateInstance();
+            var inferenceParams = new InferenceParams()
+            {
+                Temperature = 0.15f,
+                MaxTokens = 64,
+                RepeatPenalty = 1.05f,
+                RepeatLastTokensCount = 32,
+                Grammar = grammarHandle
+            };
+
+            var prompt = BuildNpcDecisionPrompt(request);
+            var json = await CollectResponseAsync(
+                planningSession.ChatAsync(new ChatHistory.Message(AuthorRole.User, prompt), inferenceParams),
+                cancel);
+
+            if (!TryParseNpcDecision(json, request, out var decision))
+            {
+                Debug.LogWarning($"NPC grammar parse failed. Raw output: {json}");
+                return BuildFallbackNpcDecision(request);
+            }
+
+            return decision;
+        }
+        finally
+        {
+            await executor.LoadState(savedState);
+        }
+    }
+
+    private static NpcDecisionRequest NormalizeNpcDecisionRequest(NpcDecisionRequest request)
+    {
+        request.GridWidth = Mathf.Max(1, request.GridWidth);
+        request.GridHeight = Mathf.Max(1, request.GridHeight);
+        request.NearRadius = Mathf.Max(1, request.NearRadius);
+        request.NpcGrid = ClampToGrid(request.NpcGrid, request.GridWidth, request.GridHeight);
+        request.PlayerPingGrid = ClampToGrid(request.PlayerPingGrid, request.GridWidth, request.GridHeight);
+        return request;
+    }
+
+    private static Vector2Int ClampToGrid(Vector2Int point, int gridWidth, int gridHeight)
+    {
+        return new Vector2Int(
+            Mathf.Clamp(point.x, 0, gridWidth - 1),
+            Mathf.Clamp(point.y, 0, gridHeight - 1));
+    }
+
+    private static string BuildNpcDecisionPrompt(NpcDecisionRequest request)
+    {
+        var behavior = request.Behavior.ToString().ToLowerInvariant();
+        return
+            "Pick one NPC action from: hold, move_to_ping, move_near_self.\n" +
+            $"Grid width={request.GridWidth}, height={request.GridHeight}.\n" +
+            $"NPC at x={request.NpcGrid.x}, y={request.NpcGrid.y}.\n" +
+            $"Player ping at x={request.PlayerPingGrid.x}, y={request.PlayerPingGrid.y}.\n" +
+            $"NPC behavior={behavior}. Near radius={request.NearRadius}.\n" +
+            "Rules:\n" +
+            "- aggressive prefers move_to_ping.\n" +
+            "- cautious prefers move_near_self or hold.\n" +
+            "- guard prefers hold unless ping is very close.\n" +
+            "- scout prefers move_near_self, but can move_to_ping if beneficial.\n" +
+            "- target_x and target_y must be inside the grid.\n" +
+            "- if action is hold, target should be NPC position.\n" +
+            "- if action is move_near_self, target should stay within near radius of NPC.\n" +
+            "Respond with JSON only.";
+    }
+
+    private async UniTask<string> CollectResponseAsync(IAsyncEnumerable<string> tokens, CancellationToken cancel)
+    {
+        var buffer = new StringBuilder(128);
+        await foreach (var token in ChatConcurrent(tokens))
+        {
+            cancel.ThrowIfCancellationRequested();
+            buffer.Append(token);
+        }
+
+        return buffer.ToString().Trim();
+    }
+
+    private static bool TryParseNpcDecision(string json, NpcDecisionRequest request, out NpcDecision decision)
+    {
+        decision = default;
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            decision = JsonSerializer.Deserialize<NpcDecision>(json, NpcDecisionJsonOptions);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(decision.action))
+        {
+            return false;
+        }
+
+        decision.action = decision.action.Trim();
+        if (decision.action != "hold" && decision.action != "move_to_ping" && decision.action != "move_near_self")
+        {
+            return false;
+        }
+
+        decision.target_x = Mathf.Clamp(decision.target_x, 0, request.GridWidth - 1);
+        decision.target_y = Mathf.Clamp(decision.target_y, 0, request.GridHeight - 1);
+        return true;
+    }
+
+    private static NpcDecision BuildFallbackNpcDecision(NpcDecisionRequest request)
+    {
+        return new NpcDecision
+        {
+            action = "hold",
+            target_x = request.NpcGrid.x,
+            target_y = request.NpcGrid.y
+        };
+    }
     private void SwitchSession(int index)
     {
         SaveActiveSession();
