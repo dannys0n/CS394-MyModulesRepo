@@ -1,4 +1,4 @@
-# if UNITY_EDITOR
+#if UNITY_EDITOR
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Callbacks;
@@ -13,26 +13,24 @@ public class LLamaSharpBuildPostprocessor {
     /// <param name="pathToBuiltProject"></param>
     [PostProcessBuild(1)]
     public static void OnPostprocessBuild(BuildTarget target, string pathToBuiltProject) {
-        string pathToLibllama;
+        string pluginsDirectory;
         pathToBuiltProject = Path.GetDirectoryName(pathToBuiltProject);
         if (target == BuildTarget.StandaloneWindows64)
         {
-            pathToLibllama = Path.Join(
+            pluginsDirectory = Path.Join(
                 Path.Join(
                     pathToBuiltProject, $"{PlayerSettings.productName}_Data", "Plugins"
                 ), 
-                "x86_64",
-                "libllama.dll"
+                "x86_64"
             );
         }
         else if (target == BuildTarget.StandaloneWindows)
         {
-            pathToLibllama = Path.Join(
+            pluginsDirectory = Path.Join(
                 Path.Join(
                     pathToBuiltProject, $"{PlayerSettings.productName}_Data", "Plugins"
                 ), 
-                "x86",
-                "libllama.dll"
+                "x86"
             );
         }
         else
@@ -40,13 +38,39 @@ public class LLamaSharpBuildPostprocessor {
             Debug.LogError("Unsupported build target");
             return;
         }
-        Debug.Log($"Copying libllama.dll from {pathToLibllama}");
-        if (!File.Exists(pathToLibllama)) {
-            Debug.LogError("libllama.dll not found in the built project");
-            return;
+
+        var nativeDlls = new[]
+        {
+            "llama.dll",
+            "libllama.dll",
+            "cudart64_12.dll",
+            "cublas64_12.dll",
+            "cublasLt64_12.dll"
+        };
+
+        var copiedBackend = false;
+        foreach (var dllName in nativeDlls)
+        {
+            var sourcePath = Path.Join(pluginsDirectory, dllName);
+            if (!File.Exists(sourcePath))
+            {
+                continue;
+            }
+
+            var destinationPath = Path.Join(pathToBuiltProject, dllName);
+            File.Copy(sourcePath, destinationPath, true);
+            Debug.Log($"Copied native runtime: {dllName}");
+
+            if (dllName == "llama.dll" || dllName == "libllama.dll")
+            {
+                copiedBackend = true;
+            }
         }
-        // copy the libllama.dll to the project directory
-        File.Copy(pathToLibllama, Path.Join(pathToBuiltProject, "libllama.dll"), true);
+
+        if (!copiedBackend)
+        {
+            Debug.LogError("No LLama backend DLL was found in the built Plugins directory.");
+        }
     }
 }
 #endif

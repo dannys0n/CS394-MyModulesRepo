@@ -1,11 +1,15 @@
 using UnityEngine;
+using System;
+using System.IO;
 using System.Collections.Generic;
 using LLama;
 using LLama.Common;
+using LLama.Native;
 using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine.UI;
 using System.Threading;
+using System.Runtime.InteropServices;
 using static LLama.StatefulExecutorBase;
 
 public class LLamaSharpTestScript : MonoBehaviour
@@ -30,44 +34,55 @@ public class LLamaSharpTestScript : MonoBehaviour
     async UniTaskVoid Start()
     {
         _cts = new CancellationTokenSource();
-        SetInteractable(false);
-        Submit.onClick.AddListener(() =>
+        try
         {
-            _submittedText = Input.text;
-            Input.text = "";
-        });
-        Output.text = "User: ";
-        // Load a model
-        var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
-        {
-            ContextSize = 4096,
-            Seed = 1337,
-            GpuLayerCount = 35
-        };
-        // Switch to the thread pool for long-running operations
-        await UniTask.SwitchToThreadPool();
-        using var model = LLamaWeights.LoadFromFile(parameters);
-        await UniTask.SwitchToMainThread();
-        // Initialize a chat session
-        using var context = model.CreateContext(parameters);
-        var ex = new InteractiveExecutor(context);
-        // Save the empty state for cases when we need to switch to empty session
-        _emptyState = ex.GetStateData();
-        foreach(var option in SessionSelector.options)
-        {
-            var session = new ChatSession(ex);
-            // This won't process the system prompt until the first user message is received
-            // to pre-process it you'd need to look into context.Decode() method.
-            // Create an issue on github if you need help with that.
-            session.AddSystemMessage(SystemPrompt);
-            _chatSessions.Add(session);
-            _executorStates.Add(null);
+            EnsureCudaNativeLibrariesLoaded();
+            LogNativeBackendInfo();
+
+            SetInteractable(false);
+            Submit.onClick.AddListener(() =>
+            {
+                _submittedText = Input.text;
+                Input.text = "";
+            });
+            Output.text = "User: ";
+            // Load a model
+            var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
+            {
+                ContextSize = 4096,
+                Seed = 1337,
+                GpuLayerCount = 35
+            };
+            // Switch to the thread pool for long-running operations
+            await UniTask.SwitchToThreadPool();
+            using var model = LLamaWeights.LoadFromFile(parameters);
+            await UniTask.SwitchToMainThread();
+            // Initialize a chat session
+            using var context = model.CreateContext(parameters);
+            var ex = new InteractiveExecutor(context);
+            // Save the empty state for cases when we need to switch to empty session
+            _emptyState = ex.GetStateData();
+            foreach (var option in SessionSelector.options)
+            {
+                var session = new ChatSession(ex);
+                // This won't process the system prompt until the first user message is received
+                // to pre-process it you'd need to look into context.Decode() method.
+                // Create an issue on github if you need help with that.
+                session.AddSystemMessage(SystemPrompt);
+                _chatSessions.Add(session);
+                _executorStates.Add(null);
+            }
+            SessionSelector.onValueChanged.AddListener(SwitchSession);
+            _activeSession = 0;
+            // run the inference in a loop to chat with LLM
+            await ChatRoutine(_cts.Token);
+            Submit.onClick.RemoveAllListeners();
         }
-        SessionSelector.onValueChanged.AddListener(SwitchSession);
-        _activeSession = 0;
-        // run the inference in a loop to chat with LLM
-        await ChatRoutine(_cts.Token);
-        Submit.onClick.RemoveAllListeners();
+        catch (Exception e)
+        {
+            Debug.LogError($"Failed to initialize LLamaSharp CUDA runtime: {e}");
+            SetInteractable(false);
+        }
     }
 
     /// <summary>
@@ -161,7 +176,7 @@ public class LLamaSharpTestScript : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
-        _cts.Cancel();
+        _cts?.Cancel();
     }
 
     /// <summary>
@@ -187,5 +202,89 @@ public class LLamaSharpTestScript : MonoBehaviour
         Submit.interactable = interactable;
         Input.interactable = interactable;
         SessionSelector.interactable = interactable;
+    }
+
+    [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr LoadLibrary(string lpFileName);
+
+    private static void EnsureCudaNativeLibrariesLoaded()
+    {
+        var searchPaths = new[]
+        {
+            Path.Combine(Application.dataPath, "Plugins", "x86_64"),
+            Application.dataPath
+        };
+
+        TryLoadOptional("cudart64_12.dll", searchPaths);
+        TryLoadOptional("cublas64_12.dll", searchPaths);
+        TryLoadOptional("cublasLt64_12.dll", searchPaths);
+
+        // Prefer CUDA backend from Plugins/x86_64. Keep libllama as fallback.
+        if (!TryLoadRequired("llama.dll", searchPaths) && !TryLoadRequired("libllama.dll", searchPaths))
+        {
+            throw new DllNotFoundException("Neither llama.dll nor libllama.dll was found in the expected Unity paths.");
+        }
+    }
+
+    private static bool TryLoadRequired(string fileName, string[] searchPaths)
+    {
+        foreach (var path in searchPaths)
+        {
+            var fullPath = Path.Combine(path, fileName);
+            if (!File.Exists(fullPath))
+            {
+                continue;
+            }
+
+            var handle = LoadLibrary(fullPath);
+            if (handle != IntPtr.Zero)
+            {
+                Debug.Log($"Loaded native library: {fullPath}");
+                return true;
+            }
+
+            var error = Marshal.GetLastWin32Error();
+            throw new DllNotFoundException($"Failed to load native library '{fullPath}' (Win32 error {error}).");
+        }
+
+        return false;
+    }
+
+    private static void TryLoadOptional(string fileName, string[] searchPaths)
+    {
+        foreach (var path in searchPaths)
+        {
+            var fullPath = Path.Combine(path, fileName);
+            if (!File.Exists(fullPath))
+            {
+                continue;
+            }
+
+            var handle = LoadLibrary(fullPath);
+            if (handle != IntPtr.Zero)
+            {
+                Debug.Log($"Loaded CUDA dependency: {fullPath}");
+                return;
+            }
+
+            var error = Marshal.GetLastWin32Error();
+            Debug.LogWarning($"Could not load optional CUDA dependency '{fullPath}' (Win32 error {error}).");
+            return;
+        }
+    }
+
+    private static void LogNativeBackendInfo()
+    {
+        try
+        {
+            var systemInfoPtr = NativeApi.llama_print_system_info();
+            var systemInfo = systemInfoPtr == IntPtr.Zero ? "<null>" : Marshal.PtrToStringAnsi(systemInfoPtr);
+            Debug.Log($"LLama backend loaded. GPU offload: {NativeApi.llama_supports_gpu_offload()}, max devices: {NativeApi.llama_max_devices()}");
+            Debug.Log($"LLama system info: {systemInfo}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning($"Could not query LLama native backend info: {e.Message}");
+        }
     }
 }
