@@ -973,13 +973,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-  MaxNewTokens: 256
+  MaxNewTokens: 64
   RepeatPenalty: 1.1
-  RepeatLastTokensCount: 64
-  MaxSameTokenInRow: 64
+  RepeatLastTokensCount: 32
+  MaxSameTokenInRow: 32
   GpuLayerCount: 24
   ContextSize: 2048
-  DisableKqvOffload: 1
+  DisableKqvOffload: 0
   SystemPrompt: You are Bob, a helpful, kind, honest, and precise assistant.
   Output: {fileID: 452916404}
   Input: {fileID: 1754878786}
