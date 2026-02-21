@@ -978,6 +978,8 @@ MonoBehaviour:
   RepeatLastTokensCount: 64
   MaxSameTokenInRow: 64
   GpuLayerCount: 24
+  ContextSize: 2048
+  DisableKqvOffload: 1
   SystemPrompt: You are Bob, a helpful, kind, honest, and precise assistant.
   Output: {fileID: 452916404}
   Input: {fileID: 1754878786}

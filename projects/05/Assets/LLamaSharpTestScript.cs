@@ -19,7 +19,9 @@ public class LLamaSharpTestScript : MonoBehaviour
     public float RepeatPenalty = 1.1f;
     public int RepeatLastTokensCount = 64;
     public int MaxSameTokenInRow = 64;
-    public int GpuLayerCount = 35;
+    public int GpuLayerCount = 20;
+    public int ContextSize = 2048;
+    public bool DisableKqvOffload = true;
     [TextArea(3, 10)]
     public string SystemPrompt = "You are Bob, a helpful, kind, honest, and precise assistant.";
     public TMP_Text Output;
@@ -53,9 +55,10 @@ public class LLamaSharpTestScript : MonoBehaviour
             // Load a model
             var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
             {
-                ContextSize = 4096,
+                ContextSize = (uint?)this.ContextSize,
                 Seed = 1337,
-                GpuLayerCount = this.GpuLayerCount
+                GpuLayerCount = this.GpuLayerCount,
+                NoKqvOffload = this.DisableKqvOffload
             };
             // Switch to the thread pool for long-running operations
             await UniTask.SwitchToThreadPool();
@@ -319,6 +322,8 @@ public class LLamaSharpTestScript : MonoBehaviour
         }
     }
 }
+
+
 
 
 
