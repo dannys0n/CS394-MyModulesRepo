@@ -14,14 +14,18 @@ using static LLama.StatefulExecutorBase;
 
 public class LLamaSharpTestScript : MonoBehaviour
 {
-    public string ModelPath = "models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"; // change it to your own model path
+    public string ModelPath = "models/qwen2.5-1.5b-instruct-q4_k_m.gguf"; // change it to your own model path
+    public int MaxNewTokens = 256;
+    public float RepeatPenalty = 1.1f;
+    public int RepeatLastTokensCount = 64;
+    public int MaxSameTokenInRow = 64;
+    public int GpuLayerCount = 35;
     [TextArea(3, 10)]
-    public string SystemPrompt = "Transcript of a dialog, where the User interacts with an Assistant named Bob. Bob is helpful, kind, honest, good at writing, and never fails to answer the User's requests immediately and with precision.\r\n\r\nUser: Hello, Bob.\r\nBob: Hello. How may I help you today?\r\nUser: Please tell me the best city in Europe.\r\nBob: Sure. The best city in Europe is Kyiv, the capital of Ukraine.\r\nUser:";
+    public string SystemPrompt = "You are Bob, a helpful, kind, honest, and precise assistant.";
     public TMP_Text Output;
     public TMP_InputField Input;
     public TMP_Dropdown SessionSelector;
     public Button Submit;
-
 
     private ExecutorBaseState _emptyState;
     private List<ExecutorBaseState> _executorStates = new List<ExecutorBaseState>();
@@ -51,7 +55,7 @@ public class LLamaSharpTestScript : MonoBehaviour
             {
                 ContextSize = 4096,
                 Seed = 1337,
-                GpuLayerCount = 35
+                GpuLayerCount = this.GpuLayerCount
             };
             // Switch to the thread pool for long-running operations
             await UniTask.SwitchToThreadPool();
@@ -104,24 +108,51 @@ public class LLamaSharpTestScript : MonoBehaviour
             Output.text += " " + userMessage + "\n";
             // Disable input while processing the message
             SetInteractable(false);
+
+            var inferenceParams = new InferenceParams()
+            {
+                Temperature = 0.6f,
+                MaxTokens = MaxNewTokens,
+                RepeatPenalty = RepeatPenalty,
+                RepeatLastTokensCount = RepeatLastTokensCount,
+                AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:" }
+            };
+
+            var previousToken = "";
+            var sameTokenCount = 0;
+
             await foreach (var token in ChatConcurrent(
                 _chatSessions[_activeSession].ChatAsync(
                     new ChatHistory.Message(AuthorRole.User, userMessage),
-                    new InferenceParams() 
-                    { 
-                        Temperature = 0.6f, 
-                        AntiPrompts = new List<string> { "User:" } 
-                    }
+                    inferenceParams
                 )
             ))
             {
                 Output.text += token;
+
+                if (token == previousToken)
+                {
+                    sameTokenCount++;
+                    if (sameTokenCount >= MaxSameTokenInRow)
+                    {
+                        Debug.LogWarning($"Stopping generation early: token '{token}' repeated {sameTokenCount} times.");
+                        break;
+                    }
+                }
+                else
+                {
+                    previousToken = token;
+                    sameTokenCount = 1;
+                }
+
                 await UniTask.NextFrame();
             }
+
+            Output.text += "\n";
         }
     }
 
-    
+
     private void SwitchSession(int index)
     {
         SaveActiveSession();
@@ -180,7 +211,7 @@ public class LLamaSharpTestScript : MonoBehaviour
     }
 
     /// <summary>
-    /// Wraps AsyncEnumerable with transition to the thread pool. 
+    /// Wraps AsyncEnumerable with transition to the thread pool.
     /// </summary>
     /// <param name="tokens"></param>
     /// <returns>IAsyncEnumerable computed on a thread pool</returns>
@@ -288,3 +319,9 @@ public class LLamaSharpTestScript : MonoBehaviour
         }
     }
 }
+
+
+
+
+
+

@@ -973,24 +973,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-  SystemPrompt: 'Transcript of a dialog, where the User interacts with an Assistant
-    named Bob. Bob is helpful, kind, honest, good at writing, and never fails to
-    answer the User''s requests immediately and with precision.
-
-
-
-    User: Hello,
-    Bob.
-
-    Bob: Hello. How may I help you today?
-
-    User: Please tell me the
-    best city in Europe.
-
-    Bob: Sure. The best city in Europe is Kyiv, the capital
-    of Ukraine.
-
-    User:'
+  MaxNewTokens: 256
+  RepeatPenalty: 1.1
+  RepeatLastTokensCount: 64
+  MaxSameTokenInRow: 64
+  GpuLayerCount: 24
+  SystemPrompt: You are Bob, a helpful, kind, honest, and precise assistant.
   Output: {fileID: 452916404}
   Input: {fileID: 1754878786}
   SessionSelector: {fileID: 409754416}
