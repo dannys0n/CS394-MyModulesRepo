@@ -1823,8 +1823,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-3b-instruct-q4_k_m.gguf
-  temperature: 0.3
-  MaxNewTokens: 32
+  temperature: 0.4
+  MaxNewTokens: 48
   RepeatPenalty: 1.15
   RepeatLastTokensCount: 32
   MaxSameTokenInRow: 32
@@ -8408,7 +8408,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -4.5700073, y: 5.3899536}
+  m_AnchoredPosition: {x: -4.5700684, y: 5.3899536}
   m_SizeDelta: {x: -1518.8599, y: -579.2201}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2084254186

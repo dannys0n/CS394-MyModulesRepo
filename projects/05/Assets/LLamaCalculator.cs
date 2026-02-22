@@ -48,8 +48,9 @@ public class LLamaCalculator : MonoBehaviour
     private string _inputBuffer = string.Empty;
     private string _pendingPrompt = string.Empty;
     private bool _hasPendingPrompt;
+    private bool _markForClear = false;
 
-    async UniTaskVoid Start()
+	async UniTaskVoid Start()
     {
         _cts = new CancellationTokenSource();
         try
@@ -92,7 +93,15 @@ public class LLamaCalculator : MonoBehaviour
 
     public void AppendString(string value)
     {
-        if (string.IsNullOrEmpty(value))
+        if (_markForClear)
+        {
+			_inputBuffer = string.Empty;
+			RefreshInputText();
+			_markForClear = false;
+		}
+
+
+		if (string.IsNullOrEmpty(value))
         {
             return;
         }
@@ -110,9 +119,12 @@ public class LLamaCalculator : MonoBehaviour
     public void EnterPrompt()
     {
         var trimmedPrompt = _inputBuffer.Trim();
-        ClearInputAndOutput();
+        //ClearInputAndOutput();
+        ClearOutput();
 
-        if (string.IsNullOrWhiteSpace(trimmedPrompt))
+        _markForClear = true;
+
+		if (string.IsNullOrWhiteSpace(trimmedPrompt))
         {
             return;
         }
@@ -161,10 +173,10 @@ public class LLamaCalculator : MonoBehaviour
                 RepeatPenalty = RepeatPenalty,
                 RepeatLastTokensCount = RepeatLastTokensCount,
                //AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:", "\\nAssistant:", "Assistant:" }
-								//AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:" }
+			    //AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:" }
 
-								AntiPrompts = new List<string> { "\\nUser:", "User:" }
-						};
+				AntiPrompts = new List<string> { "\\nUser:", "User:" }
+			};
 
             var previousToken = string.Empty;
             var sameTokenCount = 0;
