@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using LLama.Common;
-using LLama.Grammars;
 using LLama.Native;
 
 public class LLamaNpcGrammarPlanner : MonoBehaviour
@@ -21,8 +20,8 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
     public int RepeatLastTokensCount = 32;
     public bool TrimToFirstJsonObject = true;
 
-    [Obsolete("Native grammar is always attempted; this compatibility property is ignored.")]
-    public bool UseNativeGrammar => true;
+    [Obsolete("Native grammar is disabled for stability; strict JSON prompting/parsing is used instead.")]
+    public bool UseNativeGrammar => false;
 
     public enum NpcBehavior
     {
@@ -70,24 +69,14 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         out SafeLLamaGrammarHandle grammarHandle,
         out Func<string, bool> stopPredicate)
     {
-        var normalizedRequest = Normalize(request);
+        _ = Normalize(request);
 
+        // Stability mode: do not use native grammar handles during sampling.
+        // This avoids intermittent native crashes observed with grammar-constrained async generation.
         grammarHandle = null;
-        try
-        {
-            var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
-            grammarHandle = grammar.CreateInstance();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"Native grammar setup failed; falling back to prompt-only JSON constraints. {ex.GetType().Name}: {ex.Message}");
-            grammarHandle = null;
-        }
 
         stopPredicate = null;
-        // With native grammar enabled, output is already constrained to one JSON object.
-        // Avoid early-stop races while the native backend may still be finalizing generation.
-        if (TrimToFirstJsonObject && grammarHandle == null)
+        if (TrimToFirstJsonObject)
         {
             stopPredicate = text => TryExtractFirstJsonObject(text, out _);
         }
@@ -103,7 +92,7 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         };
     }
 
-    [Obsolete("Native grammar is always attempted; the useNativeGrammar argument is ignored.")]
+    [Obsolete("Native grammar is disabled for stability; the useNativeGrammar argument is ignored.")]
     public InferenceParams BuildInferenceParams(
         NpcDecisionRequest request,
         bool useNativeGrammar,

@@ -375,12 +375,9 @@ public class LLamaGridPingController : MonoBehaviour
             }
             finally
             {
-                if (grammarHandle != null)
-                {
-                    // Defer disposal one frame to reduce native lifetime races.
-                    await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
-                    grammarHandle.Dispose();
-                }
+                // Intentionally do not dispose grammarHandle here.
+                // LLamaSharp may manage grammar lifetime during sampling; explicit disposal can race native code.
+                grammarHandle = null;
             }
         }
         catch (Exception ex)
