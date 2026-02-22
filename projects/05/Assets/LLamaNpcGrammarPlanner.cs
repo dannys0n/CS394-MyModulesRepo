@@ -25,7 +25,6 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
     public enum NpcBehavior
     {
         Guard,
-        Cautious,
         Aggressive,
         Scout
     }
@@ -131,17 +130,16 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
         return
             $"{baseInstruction}\n" +
-            "Pick one NPC action from: hold, move_to_ping, move_near_self.\n" +
+            "Pick one NPC action from: hold, move_to_ping, move_near_ping.\n" +
             $"Grid width={request.GridWidth}, height={request.GridHeight}.\n" +
             "Rules:\n" +
             "- aggressive prefers move_to_ping.\n" +
-            "- cautious prefers move_near_self or hold.\n" +
             "- guard prefers hold unless ping is very close.\n" +
-            "- scout prefers move_near_self, but can move_to_ping if beneficial.\n" +
+            "- scout prefers move_near_ping, but can move_to_ping if beneficial.\n" +
             "- target_x and target_y must be inside the grid.\n" +
             "- if action is hold, target should be NPC position.\n" +
-            "- if action is move_near_self, target should stay within near radius of NPC.\n" +
-            "User message contains only the player ping coordinates.\n" +
+            "- if action is move_near_ping, target should be close to ping but always farther than near radius from ping.\n" +
+            "User message contains NPC state and player ping coordinates.\n" +
             "Respond with JSON only.";
     }
 
@@ -172,7 +170,7 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
         return
             "root ::= \"{\" \"\\\"action\\\"\" \":\" action \",\" \"\\\"target_x\\\"\" \":\" x \",\" \"\\\"target_y\\\"\" \":\" y \"}\"\n" +
-            "action ::= \"\\\"hold\\\"\" | \"\\\"move_to_ping\\\"\" | \"\\\"move_near_self\\\"\"\n" +
+            "action ::= \"\\\"hold\\\"\" | \"\\\"move_to_ping\\\"\" | \"\\\"move_near_ping\\\"\"\n" +
             $"x ::= {xValues}\n" +
             $"y ::= {yValues}\n";
     }
@@ -287,13 +285,74 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         }
 
         decision.action = decision.action.Trim();
-        if (decision.action != "hold" && decision.action != "move_to_ping" && decision.action != "move_near_self")
+        if (decision.action != "hold" && decision.action != "move_to_ping" && decision.action != "move_near_ping")
         {
             return false;
         }
 
         decision.target_x = Mathf.Clamp(decision.target_x, 0, request.GridWidth - 1);
         decision.target_y = Mathf.Clamp(decision.target_y, 0, request.GridHeight - 1);
+
+        if (decision.action == "hold")
+        {
+            decision.target_x = request.NpcGrid.x;
+            decision.target_y = request.NpcGrid.y;
+            return true;
+        }
+
+        if (decision.action == "move_near_ping")
+        {
+            var target = new Vector2Int(decision.target_x, decision.target_y);
+            if (ManhattanDistance(target, request.PlayerPingGrid) <= request.NearRadius)
+            {
+                if (!TryFindClosestPointOutsidePingRadius(request, out var correctedTarget))
+                {
+                    return false;
+                }
+
+                decision.target_x = correctedTarget.x;
+                decision.target_y = correctedTarget.y;
+            }
+        }
+
         return true;
+    }
+
+    private static int ManhattanDistance(Vector2Int a, Vector2Int b)
+    {
+        return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
+    }
+
+    private static bool TryFindClosestPointOutsidePingRadius(NpcDecisionRequest request, out Vector2Int target)
+    {
+        var found = false;
+        var bestPingDistance = int.MaxValue;
+        var bestNpcDistance = int.MaxValue;
+        target = request.NpcGrid;
+
+        for (var y = 0; y < request.GridHeight; y++)
+        {
+            for (var x = 0; x < request.GridWidth; x++)
+            {
+                var point = new Vector2Int(x, y);
+                var pingDistance = ManhattanDistance(point, request.PlayerPingGrid);
+                if (pingDistance <= request.NearRadius)
+                {
+                    continue;
+                }
+
+                var npcDistance = ManhattanDistance(point, request.NpcGrid);
+                if (pingDistance < bestPingDistance ||
+                    (pingDistance == bestPingDistance && npcDistance < bestNpcDistance))
+                {
+                    found = true;
+                    bestPingDistance = pingDistance;
+                    bestNpcDistance = npcDistance;
+                    target = point;
+                }
+            }
+        }
+
+        return found;
     }
 }

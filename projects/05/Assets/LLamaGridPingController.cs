@@ -22,7 +22,7 @@ public class LLamaGridPingController : MonoBehaviour
 
     [Header("NPC")]
     public Vector2Int NpcGrid = new Vector2Int(0, 0);
-    public LLamaNpcGrammarPlanner.NpcBehavior Behavior = LLamaNpcGrammarPlanner.NpcBehavior.Cautious;
+    public LLamaNpcGrammarPlanner.NpcBehavior Behavior = LLamaNpcGrammarPlanner.NpcBehavior.Scout;
     public int NearRadius = 3;
     public TMP_Dropdown BehaviorDropdown;
     public bool PopulateBehaviorDropdownOptions = true;

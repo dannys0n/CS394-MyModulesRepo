@@ -6293,7 +6293,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-  GpuLayerCount: 64
+  GpuLayerCount: 0
   ContextSize: 2048
   DisableKqvOffload: 1
 --- !u!1 &1507796316
