@@ -331,7 +331,22 @@ public class LLamaGridPingController : MonoBehaviour
             {
                 var inferenceParams = Planner.BuildInferenceParams(normalizedRequest, out grammarHandle, out var stopPredicate);
                 await EnsureSystemPromptAppliedAsync(systemPrompt, cancel);
-                var completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
+                string completion;
+                try
+                {
+                    completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
+                }
+                catch (Exception ex) when (Planner.UseNativeGrammar && grammarHandle != null)
+                {
+                    Debug.LogWarning($"Native grammar generation failed. Retrying without grammar. {ex.GetType().Name}: {ex.Message}");
+                    grammarHandle.Dispose();
+                    grammarHandle = null;
+
+                    var fallbackInferenceParams = Planner.BuildInferenceParams(normalizedRequest, false, out var fallbackGrammarHandle, out stopPredicate);
+                    fallbackGrammarHandle?.Dispose();
+                    completion = await GenerateCompletionAsync(userPrompt, fallbackInferenceParams, stopPredicate, cancel);
+                }
+
                 var trace = Planner.BuildDecisionTrace(normalizedRequest, systemPrompt, userPrompt, completion);
 
                 var npcTarget = new Vector2Int(trace.decision.target_x, trace.decision.target_y);

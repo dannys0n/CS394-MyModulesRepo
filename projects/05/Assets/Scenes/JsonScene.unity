@@ -4316,7 +4316,7 @@ MonoBehaviour:
   MaxTokens: 64
   RepeatPenalty: 1.05
   RepeatLastTokensCount: 32
-  UseNativeGrammar: 0
+  UseNativeGrammar: 1
   TrimToFirstJsonObject: 1
 --- !u!4 &998778162
 Transform:

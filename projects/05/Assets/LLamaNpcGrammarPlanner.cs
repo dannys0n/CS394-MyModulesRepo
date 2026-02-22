@@ -59,7 +59,7 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
     public void BuildPrompts(NpcDecisionRequest request, out NpcDecisionRequest normalizedRequest, out string systemPrompt, out string userPrompt)
     {
         normalizedRequest = Normalize(request);
-        systemPrompt = BuildSystemPrompt(normalizedRequest, UseNativeGrammar);
+        systemPrompt = BuildSystemPrompt(normalizedRequest);
         userPrompt = BuildUserPrompt(normalizedRequest);
     }
 
@@ -68,13 +68,30 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         out SafeLLamaGrammarHandle grammarHandle,
         out Func<string, bool> stopPredicate)
     {
+        return BuildInferenceParams(request, UseNativeGrammar, out grammarHandle, out stopPredicate);
+    }
+
+    public InferenceParams BuildInferenceParams(
+        NpcDecisionRequest request,
+        bool useNativeGrammar,
+        out SafeLLamaGrammarHandle grammarHandle,
+        out Func<string, bool> stopPredicate)
+    {
         var normalizedRequest = Normalize(request);
 
         grammarHandle = null;
-        if (UseNativeGrammar)
+        if (useNativeGrammar)
         {
-            var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
-            grammarHandle = grammar.CreateInstance();
+            try
+            {
+                var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
+                grammarHandle = grammar.CreateInstance();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Native grammar setup failed; falling back to prompt-only JSON constraints. {ex.GetType().Name}: {ex.Message}");
+                grammarHandle = null;
+            }
         }
 
         stopPredicate = null;
@@ -119,7 +136,7 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         };
     }
 
-    private string BuildSystemPrompt(NpcDecisionRequest request, bool useNativeGrammar)
+    private string BuildSystemPrompt(NpcDecisionRequest request)
     {
         var baseInstruction = string.IsNullOrWhiteSpace(PlannerBaseInstruction)
             ? "You are an NPC tactical planner."
@@ -137,15 +154,12 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
             "User message contains NPC state and player ping coordinates.\n" +
             "Respond with JSON only.";
 
-        if (!useNativeGrammar)
-        {
-            prompt +=
-                "\nJSON format:\n" +
-                "{\"target_x\":<int>,\"target_y\":<int>}\n" +
-                "- Do not add markdown, code fences, or extra keys.\n" +
-                "- target_x must be an integer in [0, grid width - 1].\n" +
-                "- target_y must be an integer in [0, grid height - 1].";
-        }
+        prompt +=
+            "\nJSON format:\n" +
+            "{\"target_x\":<int>,\"target_y\":<int>}\n" +
+            "- Do not add markdown, code fences, or extra keys.\n" +
+            "- target_x must be an integer in [0, grid width - 1].\n" +
+            "- target_y must be an integer in [0, grid height - 1].";
 
         return prompt;
     }
