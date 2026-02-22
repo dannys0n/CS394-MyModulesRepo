@@ -9,9 +9,12 @@ using Cysharp.Threading.Tasks;
 using TMPro;
 using System.Threading;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 public class LLamaCalculator : MonoBehaviour
 {
+	private static readonly Regex RoleLabelRegex = new Regex(@"\b(?:User|Assistant)\s*:", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     [Serializable]
     public class FewShotExample
     {
@@ -22,6 +25,7 @@ public class LLamaCalculator : MonoBehaviour
     }
 
     public string ModelPath = "models/qwen2.5-1.5b-instruct-q4_k_m.gguf";
+	  public float temperature = 0.3f;
     public int MaxNewTokens = 256;
     public float RepeatPenalty = 1.1f;
     public int RepeatLastTokensCount = 64;
@@ -149,16 +153,17 @@ public class LLamaCalculator : MonoBehaviour
             _pendingPrompt = string.Empty;
             _hasPendingPrompt = false;
 
-            AppendOutput($"User: {userMessage}\nAssistant: ");
-
             var inferenceParams = new InferenceParams
             {
-                Temperature = 0.6f,
+                Temperature = temperature,
                 MaxTokens = MaxNewTokens,
                 RepeatPenalty = RepeatPenalty,
                 RepeatLastTokensCount = RepeatLastTokensCount,
-                AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:" }
-            };
+               //AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:", "\\nAssistant:", "Assistant:" }
+								//AntiPrompts = new List<string> { "<|im_end|>", "\\nUser:", "User:" }
+
+								AntiPrompts = new List<string> { "\\nUser:", "User:" }
+						};
 
             var previousToken = string.Empty;
             var sameTokenCount = 0;
@@ -220,10 +225,23 @@ public class LLamaCalculator : MonoBehaviour
 
     private void AppendOutput(string value)
     {
-        if (OutputText != null)
+        if (OutputText == null || string.IsNullOrEmpty(value))
         {
-            OutputText.text += value;
+            return;
         }
+
+        OutputText.text += value;
+        //OutputText.text = RemoveRoleLabels(OutputText.text);
+    }
+
+    private static string RemoveRoleLabels(string output)
+    {
+        if (string.IsNullOrEmpty(output))
+        {
+            return string.Empty;
+        }
+
+        return RoleLabelRegex.Replace(output, string.Empty);
     }
 
     private void ApplyFewShotExamples(ChatSession session)

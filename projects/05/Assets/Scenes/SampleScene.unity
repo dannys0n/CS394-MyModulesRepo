@@ -360,8 +360,8 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 343465954}
   - {fileID: 422610553}
+  - {fileID: 343465954}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &141512542
@@ -1556,7 +1556,6 @@ RectTransform:
   m_Children:
   - {fileID: 1451477573}
   - {fileID: 1463975768}
-  - {fileID: 1979907114}
   - {fileID: 2084254185}
   m_Father: {fileID: 139727644}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -1823,32 +1822,87 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dff2118a55de724439b044919581d77e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-  MaxNewTokens: 48
+  ModelPath: models/qwen2.5-3b-instruct-q4_k_m.gguf
+  temperature: 0.9
+  MaxNewTokens: 32
   RepeatPenalty: 1.15
-  RepeatLastTokensCount: 64
-  MaxSameTokenInRow: 64
-  GpuLayerCount: 20
-  ContextSize: 2048
+  RepeatLastTokensCount: 32
+  MaxSameTokenInRow: 4
+  GpuLayerCount: 32
+  ContextSize: 4096
   DisableKqvOffload: 1
-  SystemPrompt: "You are CALC-UNIT: a dry, sarcastic calculator.\r\n\r\nInput constraints:\r\n-
-    The user input will be a single calculator expression: digits, decimal points,
-    parentheses, and operators (+ - * / ^).\r\n- No natural language, no spaces.
-    Example: \"((12.5-3)*4)^2/7\"\r\n\r\nBehavior:\r\n- Evaluate the expression and
-    return the final numeric result.\r\n- Output should be short: the number, optionally
-    followed by ONE dry sarcastic sentence.\r\n- Do not explain unless the user explicitly
-    enters a special token: \"?\" at the end of the expression.\r\r\n- If the expression
-    is invalid or ambiguous (division by zero, mismatched parentheses, invalid characters),
-    respond with a short error message and (optionally) one sarcastic sentence.\r\n-
-    Never ask questions. The input channel cannot respond with clarifications.\r\n-
-    Never produce anything except: a number result OR an error message."
+  SystemPrompt: 'You are CALC-UNIT: a dry, sarcastic, unenthusiastic, short-spoken
+    calculator.
+
+    
+
+    Input constraints:
+
+    - The user input will be a
+    single calculator expression: digits, decimal points, parentheses, and operators
+    (+ - * / ^).
+
+    - No natural language, no spaces. Example: "((12.5-3)*4)^2/7"
+
+    
+
+    Behavior:
+
+    -
+    Evaluate the expression and return the final numeric result.
+
+    - Output should
+    be short: the number, optionally followed by ONE dry sarcastic sentence.
+
+    -
+    If the expression is invalid or ambiguous (division by zero, mismatched parentheses,
+    invalid characters), respond with a short error message and (optionally) one
+    sarcastic sentence.
+
+    - Never ask questions. The input channel cannot respond
+    with clarifications.
+
+    - Never produce anything except: a number result OR
+    an error message.
+
+
+
+    User: 19*7
+
+    Assistant: 133.
+
+    
+
+    User:
+    (3/8)+(5/12)
+
+    Assistant: 0.7916666667.
+
+    
+
+    User: 2^10/64
+
+    Assistant:
+    16. Math continues to exist.
+
+    
+
+    User: 1/0
+
+    Assistant: ERROR(divide_by_zero).
+
+    
+
+    User:
+    (2+3
+
+    Assistant: ERROR(mismatched_parentheses). Parentheses are a lifestyle
+    choice.'
   FewShotExamples:
   - UserPrompt: 19*7
     AssistantPrompt: 133. Arithmetic achieved.
   - UserPrompt: (3/8)+(5/12)
     AssistantPrompt: '0.7916666667. Fractions: now with decimals.'
-  - UserPrompt: 2^10/64
-    AssistantPrompt: 16. Exponents behaving themselves for once.
   - UserPrompt: 2^10/64
     AssistantPrompt: 16. Exponents behaving themselves for once.
   - UserPrompt: ((12.5-3)*4)^2/7
@@ -1857,7 +1911,7 @@ MonoBehaviour:
     AssistantPrompt: ERROR(divide_by_zero). Bold strategy.
   - UserPrompt: (2+3
     AssistantPrompt: ERROR(mismatched_parentheses). Parentheses are hard, apparently.
-  - UserPrompt: 0.1+0.2?
+  - UserPrompt: 0.1+0.2
     AssistantPrompt: '0.3000000000. Floating point: enjoy the illusion.'
   InputText: {fileID: 1463975769}
   OutputText: {fileID: 1451477574}
@@ -2126,6 +2180,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+  temperature: 0.3
   MaxNewTokens: 48
   RepeatPenalty: 1.15
   RepeatLastTokensCount: 64
@@ -5622,7 +5677,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: New Text
+  m_text: Output
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -5649,10 +5704,10 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 30
+  m_fontSize: 72
   m_fontSizeBase: 30
   m_fontWeight: 400
-  m_enableAutoSizing: 0
+  m_enableAutoSizing: 1
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 0
@@ -5783,10 +5838,10 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 30
+  m_fontSize: 72
   m_fontSizeBase: 30
   m_fontWeight: 400
-  m_enableAutoSizing: 0
+  m_enableAutoSizing: 1
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 0
@@ -8157,130 +8212,6 @@ CanvasRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1945470736}
-  m_CullTransparentMesh: 1
---- !u!1 &1979907113
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1979907114}
-  - component: {fileID: 1979907118}
-  - component: {fileID: 1979907117}
-  - component: {fileID: 1979907116}
-  - component: {fileID: 1979907115}
-  m_Layer: 5
-  m_Name: Panel
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!224 &1979907114
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1979907113}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 343465954}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 400, y: 500}
-  m_Pivot: {x: 0.5, y: 0.5}
---- !u!223 &1979907115
-Canvas:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1979907113}
-  m_Enabled: 1
-  serializedVersion: 3
-  m_RenderMode: 2
-  m_Camera: {fileID: 0}
-  m_PlaneDistance: 100
-  m_PixelPerfect: 0
-  m_ReceivesEvents: 1
-  m_OverrideSorting: 0
-  m_OverridePixelPerfect: 0
-  m_SortingBucketNormalizedSize: 0
-  m_VertexColorAlwaysGammaSpace: 0
-  m_AdditionalShaderChannelsFlag: 25
-  m_UpdateRectTransformForStandalone: 0
-  m_SortingLayerID: 0
-  m_SortingOrder: 0
-  m_TargetDisplay: 0
---- !u!114 &1979907116
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1979907113}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8a8695521f0d02e499659fee002a26c2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Padding:
-    m_Left: 0
-    m_Right: 0
-    m_Top: 0
-    m_Bottom: 0
-  m_ChildAlignment: 0
-  m_StartCorner: 0
-  m_StartAxis: 0
-  m_CellSize: {x: 100, y: 100}
-  m_Spacing: {x: 0, y: 0}
-  m_Constraint: 0
-  m_ConstraintCount: 2
---- !u!114 &1979907117
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1979907113}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.392}
-  m_RaycastTarget: 1
-  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  m_Maskable: 1
-  m_OnCullStateChanged:
-    m_PersistentCalls:
-      m_Calls: []
-  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
-  m_PreserveAspect: 0
-  m_FillCenter: 1
-  m_FillMethod: 4
-  m_FillAmount: 1
-  m_FillClockwise: 1
-  m_FillOrigin: 0
-  m_UseSpriteMesh: 0
-  m_PixelsPerUnitMultiplier: 1
---- !u!222 &1979907118
-CanvasRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1979907113}
   m_CullTransparentMesh: 1
 --- !u!1 &2053513846
 GameObject:
