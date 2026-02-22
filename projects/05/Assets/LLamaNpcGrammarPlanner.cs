@@ -94,10 +94,16 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
                 RepeatPenalty = RepeatPenalty,
                 RepeatLastTokensCount = RepeatLastTokensCount,
                 Grammar = grammarHandle,
-                AntiPrompts = new List<string> { "}", "<|im_end|>" }
+                AntiPrompts = new List<string> { "<|im_end|>" }
             };
 
-            var completion = await Runtime.CompleteOnceAsync(PlannerSystemPrompt, userPrompt, inferenceParams, cancel);
+            Func<string, bool> stopPredicate = null;
+            if (TrimToFirstJsonObject)
+            {
+                stopPredicate = text => TryExtractFirstJsonObject(text, out _);
+            }
+
+            var completion = await Runtime.CompleteOnceAsync(PlannerSystemPrompt, userPrompt, inferenceParams, cancel, stopPredicate);
 
             if (TrimToFirstJsonObject && TryExtractFirstJsonObject(completion, out var extractedJson))
             {

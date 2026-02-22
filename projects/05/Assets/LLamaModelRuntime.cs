@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
@@ -7,6 +7,7 @@ using LLama.Common;
 using LLama.Native;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using static LLama.StatefulExecutorBase;
 
@@ -132,7 +133,12 @@ public class LLamaModelRuntime : MonoBehaviour
         }
     }
 
-    public async UniTask<string> CompleteOnceAsync(string systemPrompt, string userPrompt, InferenceParams inferenceParams, CancellationToken cancel = default)
+    public async UniTask<string> CompleteOnceAsync(
+        string systemPrompt,
+        string userPrompt,
+        InferenceParams inferenceParams,
+        CancellationToken cancel = default,
+        Func<string, bool> stopPredicate = null)
     {
         EnsureInitialized();
 
@@ -148,13 +154,17 @@ public class LLamaModelRuntime : MonoBehaviour
                     oneShotSession.AddSystemMessage(systemPrompt);
                 }
 
-                var parts = new List<string>(128);
+                var completion = new StringBuilder(256);
                 await foreach (var token in ChatConcurrent(oneShotSession.ChatAsync(new ChatHistory.Message(AuthorRole.User, userPrompt), inferenceParams), cancel))
                 {
-                    parts.Add(token);
+                    completion.Append(token);
+                    if (stopPredicate != null && stopPredicate(completion.ToString()))
+                    {
+                        break;
+                    }
                 }
 
-                return string.Concat(parts).Trim();
+                return completion.ToString().Trim();
             }
             finally
             {
