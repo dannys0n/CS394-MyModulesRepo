@@ -19,8 +19,10 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
     public int MaxTokens = 64;
     public float RepeatPenalty = 1.05f;
     public int RepeatLastTokensCount = 32;
-    public bool UseNativeGrammar = false;
     public bool TrimToFirstJsonObject = true;
+
+    [Obsolete("Native grammar is always attempted; this compatibility property is ignored.")]
+    public bool UseNativeGrammar => true;
 
     public enum NpcBehavior
     {
@@ -68,30 +70,18 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         out SafeLLamaGrammarHandle grammarHandle,
         out Func<string, bool> stopPredicate)
     {
-        return BuildInferenceParams(request, UseNativeGrammar, out grammarHandle, out stopPredicate);
-    }
-
-    public InferenceParams BuildInferenceParams(
-        NpcDecisionRequest request,
-        bool useNativeGrammar,
-        out SafeLLamaGrammarHandle grammarHandle,
-        out Func<string, bool> stopPredicate)
-    {
         var normalizedRequest = Normalize(request);
 
         grammarHandle = null;
-        if (useNativeGrammar)
+        try
         {
-            try
-            {
-                var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
-                grammarHandle = grammar.CreateInstance();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"Native grammar setup failed; falling back to prompt-only JSON constraints. {ex.GetType().Name}: {ex.Message}");
-                grammarHandle = null;
-            }
+            var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
+            grammarHandle = grammar.CreateInstance();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Native grammar setup failed; falling back to prompt-only JSON constraints. {ex.GetType().Name}: {ex.Message}");
+            grammarHandle = null;
         }
 
         stopPredicate = null;
@@ -109,6 +99,16 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
             Grammar = grammarHandle,
             AntiPrompts = new List<string> { "<|im_end|>" }
         };
+    }
+
+    [Obsolete("Native grammar is always attempted; the useNativeGrammar argument is ignored.")]
+    public InferenceParams BuildInferenceParams(
+        NpcDecisionRequest request,
+        bool useNativeGrammar,
+        out SafeLLamaGrammarHandle grammarHandle,
+        out Func<string, bool> stopPredicate)
+    {
+        return BuildInferenceParams(request, out grammarHandle, out stopPredicate);
     }
 
     public NpcDecisionTrace BuildDecisionTrace(NpcDecisionRequest request, string systemPrompt, string userPrompt, string completion)

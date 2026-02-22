@@ -336,10 +336,11 @@ public class LLamaGridPingController : MonoBehaviour
                 {
                     completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
                 }
-                catch (Exception ex) when (Planner.UseNativeGrammar && grammarHandle != null)
+                catch (Exception ex) when (grammarHandle != null)
                 {
                     Debug.LogWarning($"Native grammar generation failed. Retrying without grammar. {ex.GetType().Name}: {ex.Message}");
-                    grammarHandle.Dispose();
+					          Debug.LogError($"Native grammar generation failed. Retrying without grammar. {ex.Message}");
+					          grammarHandle.Dispose();
                     grammarHandle = null;
 
                     var fallbackInferenceParams = Planner.BuildInferenceParams(normalizedRequest, false, out var fallbackGrammarHandle, out stopPredicate);
