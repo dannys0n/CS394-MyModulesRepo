@@ -335,6 +335,7 @@ public class LLamaGridPingController : MonoBehaviour
                 var trace = Planner.BuildDecisionTrace(normalizedRequest, systemPrompt, userPrompt, completion);
 
                 var npcTarget = new Vector2Int(trace.decision.target_x, trace.decision.target_y);
+                NpcGrid = npcTarget;
                 MarkNpcCellFromDecision(normalizedRequest.PlayerPingGrid, npcTarget);
 
                 if (SystemPromptOutput != null)
@@ -354,7 +355,7 @@ public class LLamaGridPingController : MonoBehaviour
 
                 if (DecisionOutput != null)
                 {
-                    DecisionOutput.text = $"behavior={Behavior}, action={trace.decision.action}, target=({trace.decision.target_x},{trace.decision.target_y})";
+                    DecisionOutput.text = $"behavior={Behavior}, target=({trace.decision.target_x},{trace.decision.target_y})";
                 }
 
                 Debug.Log($"[NPC Planner] Behavior={Behavior}");
