@@ -53,10 +53,7 @@ public class LLamaCalculator : MonoBehaviour
             LogNativeBackendInfo();
 
             RefreshInputText();
-            if (OutputText != null)
-            {
-                OutputText.text = string.Empty;
-            }
+            ClearOutput();
 
             var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
             {
@@ -107,15 +104,16 @@ public class LLamaCalculator : MonoBehaviour
 
     public void EnterPrompt()
     {
-        if (string.IsNullOrWhiteSpace(_inputBuffer))
+        var trimmedPrompt = _inputBuffer.Trim();
+        ClearInputAndOutput();
+
+        if (string.IsNullOrWhiteSpace(trimmedPrompt))
         {
             return;
         }
 
-        _pendingPrompt = _inputBuffer.Trim();
+        _pendingPrompt = trimmedPrompt;
         _hasPendingPrompt = true;
-        _inputBuffer = string.Empty;
-        RefreshInputText();
     }
 
     public void SetFewShotExamples(IEnumerable<FewShotExample> examples)
@@ -202,6 +200,21 @@ public class LLamaCalculator : MonoBehaviour
         if (InputText != null)
         {
             InputText.text = _inputBuffer;
+        }
+    }
+
+    private void ClearInputAndOutput()
+    {
+        _inputBuffer = string.Empty;
+        RefreshInputText();
+        ClearOutput();
+    }
+
+    private void ClearOutput()
+    {
+        if (OutputText != null)
+        {
+            OutputText.text = string.Empty;
         }
     }
 
