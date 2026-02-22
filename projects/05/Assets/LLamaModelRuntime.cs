@@ -70,7 +70,10 @@ public class LLamaModelRuntime : MonoBehaviour
             {
                 cancel.ThrowIfCancellationRequested();
                 var session = new ChatSession(_executor);
-                session.AddSystemMessage(systemPrompt);
+                if (!string.IsNullOrWhiteSpace(systemPrompt))
+                {
+                    session.AddSystemMessage(systemPrompt);
+                }
                 _chatSessions.Add(session);
                 _executorStates.Add(null);
             }
@@ -110,6 +113,29 @@ public class LLamaModelRuntime : MonoBehaviour
     {
         EnsureInitialized();
         return new List<ChatHistory.Message>(_chatSessions[_activeSession].History.Messages);
+    }
+
+    public async UniTask ClearActiveChatHistoryAsync(string systemPrompt = null, CancellationToken cancel = default)
+    {
+        EnsureInitialized();
+        await _executorSemaphore.WaitAsync(cancel);
+        try
+        {
+            await _executor.LoadState(_emptyState);
+
+            var session = new ChatSession(_executor);
+            if (!string.IsNullOrWhiteSpace(systemPrompt))
+            {
+                session.AddSystemMessage(systemPrompt);
+            }
+
+            _chatSessions[_activeSession] = session;
+            _executorStates[_activeSession] = null;
+        }
+        finally
+        {
+            _executorSemaphore.Release();
+        }
     }
 
     public async IAsyncEnumerable<string> ChatAsync(

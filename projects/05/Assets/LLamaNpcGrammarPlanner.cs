@@ -1,20 +1,18 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
-using Cysharp.Threading.Tasks;
 using LLama.Common;
 using LLama.Grammars;
 using LLama.Native;
 
 public class LLamaNpcGrammarPlanner : MonoBehaviour
 {
-    public LLamaModelRuntime Runtime;
-
-    [TextArea(2, 6)]
-    public string PlannerSystemPrompt = "You are an NPC tactical planner for a grid game. Respond with exactly one JSON object.";
+    [FormerlySerializedAs("PlannerSystemPrompt")]
+    [TextArea(2, 8)]
+    public string PlannerBaseInstruction = "You are an NPC tactical planner for a grid game. Respond with exactly one JSON object.";
 
     [Header("Generation")]
     public float Temperature = 0.15f;
@@ -62,78 +60,107 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { IncludeFields = true };
 
-    public async UniTask<NpcDecision> DecideNpcGridAsync(NpcDecisionRequest request, CancellationToken cancel = default)
+    public void BuildPrompts(NpcDecisionRequest request, out NpcDecisionRequest normalizedRequest, out string systemPrompt, out string userPrompt)
     {
-        var trace = await DecideNpcGridWithTraceAsync(request, cancel);
-        return trace.decision;
+        normalizedRequest = Normalize(request);
+        systemPrompt = BuildSystemPrompt(normalizedRequest);
+        userPrompt = BuildUserPrompt(normalizedRequest);
     }
 
-    public async UniTask<NpcDecisionTrace> DecideNpcGridWithTraceAsync(NpcDecisionRequest request, CancellationToken cancel = default)
+    public InferenceParams BuildInferenceParams(
+        NpcDecisionRequest request,
+        out SafeLLamaGrammarHandle grammarHandle,
+        out Func<string, bool> stopPredicate)
     {
-        if (Runtime == null)
+        var normalizedRequest = Normalize(request);
+
+        grammarHandle = null;
+        if (UseNativeGrammar)
         {
-            throw new InvalidOperationException("LLamaNpcGrammarPlanner requires a LLamaModelRuntime reference.");
+            var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(normalizedRequest), "root");
+            grammarHandle = grammar.CreateInstance();
         }
 
-        request = Normalize(request);
-        var userPrompt = BuildPrompt(request);
-
-        SafeLLamaGrammarHandle grammarHandle = null;
-        try
+        stopPredicate = null;
+        if (TrimToFirstJsonObject)
         {
-            if (UseNativeGrammar)
-            {
-                var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(request), "root");
-                grammarHandle = grammar.CreateInstance();
-            }
-
-            var inferenceParams = new InferenceParams
-            {
-                Temperature = Temperature,
-                MaxTokens = MaxTokens,
-                RepeatPenalty = RepeatPenalty,
-                RepeatLastTokensCount = RepeatLastTokensCount,
-                Grammar = grammarHandle,
-                AntiPrompts = new List<string> { "<|im_end|>" }
-            };
-
-            Func<string, bool> stopPredicate = null;
-            if (TrimToFirstJsonObject)
-            {
-                stopPredicate = text => TryExtractFirstJsonObject(text, out _);
-            }
-
-            var completion = await Runtime.CompleteOnceAsync(PlannerSystemPrompt, userPrompt, inferenceParams, cancel, stopPredicate);
-
-            if (TrimToFirstJsonObject && TryExtractFirstJsonObject(completion, out var extractedJson))
-            {
-                completion = extractedJson;
-            }
-
-            NpcDecision decision;
-            if (!TryParseDecision(completion, request, out decision))
-            {
-                Debug.LogWarning($"NPC planner parse failed. Raw output: {completion}");
-                decision = new NpcDecision
-                {
-                    action = "hold",
-                    target_x = request.NpcGrid.x,
-                    target_y = request.NpcGrid.y
-                };
-            }
-
-            return new NpcDecisionTrace
-            {
-                system_prompt = PlannerSystemPrompt,
-                user_prompt = userPrompt,
-                completion = completion,
-                decision = decision
-            };
+            stopPredicate = text => TryExtractFirstJsonObject(text, out _);
         }
-        finally
+
+        return new InferenceParams
         {
-            grammarHandle?.Dispose();
+            Temperature = Temperature,
+            MaxTokens = MaxTokens,
+            RepeatPenalty = RepeatPenalty,
+            RepeatLastTokensCount = RepeatLastTokensCount,
+            Grammar = grammarHandle,
+            AntiPrompts = new List<string> { "<|im_end|>" }
+        };
+    }
+
+    public NpcDecisionTrace BuildDecisionTrace(NpcDecisionRequest request, string systemPrompt, string userPrompt, string completion)
+    {
+        var normalizedRequest = Normalize(request);
+        var normalizedCompletion = string.IsNullOrWhiteSpace(completion) ? string.Empty : completion.Trim();
+
+        if (TrimToFirstJsonObject && TryExtractFirstJsonObject(normalizedCompletion, out var extractedJson))
+        {
+            normalizedCompletion = extractedJson;
         }
+
+        if (!TryParseDecision(normalizedCompletion, normalizedRequest, out var decision))
+        {
+            Debug.LogWarning($"NPC planner parse failed. Raw output: {normalizedCompletion}");
+            decision = BuildFallbackDecision(normalizedRequest);
+        }
+
+        return new NpcDecisionTrace
+        {
+            system_prompt = systemPrompt,
+            user_prompt = userPrompt,
+            completion = normalizedCompletion,
+            decision = decision
+        };
+    }
+
+    private string BuildSystemPrompt(NpcDecisionRequest request)
+    {
+        var behavior = request.Behavior.ToString().ToLowerInvariant();
+        var baseInstruction = string.IsNullOrWhiteSpace(PlannerBaseInstruction)
+            ? "You are an NPC tactical planner."
+            : PlannerBaseInstruction.Trim();
+
+        return
+            $"{baseInstruction}\n" +
+            "Pick one NPC action from: hold, move_to_ping, move_near_self.\n" +
+            $"Grid width={request.GridWidth}, height={request.GridHeight}.\n" +
+            $"NPC at x={request.NpcGrid.x}, y={request.NpcGrid.y}.\n" +
+            $"NPC behavior={behavior}. Near radius={request.NearRadius}.\n" +
+            "Rules:\n" +
+            "- aggressive prefers move_to_ping.\n" +
+            "- cautious prefers move_near_self or hold.\n" +
+            "- guard prefers hold unless ping is very close.\n" +
+            "- scout prefers move_near_self, but can move_to_ping if beneficial.\n" +
+            "- target_x and target_y must be inside the grid.\n" +
+            "- if action is hold, target should be NPC position.\n" +
+            "- if action is move_near_self, target should stay within near radius of NPC.\n" +
+            "User message contains only the player ping coordinates.\n" +
+            "Respond with JSON only.";
+    }
+
+    private static string BuildUserPrompt(NpcDecisionRequest request)
+    {
+        return $"ping_x={request.PlayerPingGrid.x}, ping_y={request.PlayerPingGrid.y}";
+    }
+
+    private static NpcDecision BuildFallbackDecision(NpcDecisionRequest request)
+    {
+        return new NpcDecision
+        {
+            action = "hold",
+            target_x = request.NpcGrid.x,
+            target_y = request.NpcGrid.y
+        };
     }
 
     private static string BuildDecisionGrammarGbnf(NpcDecisionRequest request)
@@ -234,26 +261,6 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         return new Vector2Int(
             Mathf.Clamp(point.x, 0, gridWidth - 1),
             Mathf.Clamp(point.y, 0, gridHeight - 1));
-    }
-
-    private static string BuildPrompt(NpcDecisionRequest request)
-    {
-        var behavior = request.Behavior.ToString().ToLowerInvariant();
-        return
-            "Pick one NPC action from: hold, move_to_ping, move_near_self.\n" +
-            $"Grid width={request.GridWidth}, height={request.GridHeight}.\n" +
-            $"NPC at x={request.NpcGrid.x}, y={request.NpcGrid.y}.\n" +
-            $"Player ping at x={request.PlayerPingGrid.x}, y={request.PlayerPingGrid.y}.\n" +
-            $"NPC behavior={behavior}. Near radius={request.NearRadius}.\n" +
-            "Rules:\n" +
-            "- aggressive prefers move_to_ping.\n" +
-            "- cautious prefers move_near_self or hold.\n" +
-            "- guard prefers hold unless ping is very close.\n" +
-            "- scout prefers move_near_self, but can move_to_ping if beneficial.\n" +
-            "- target_x and target_y must be inside the grid.\n" +
-            "- if action is hold, target should be NPC position.\n" +
-            "- if action is move_near_self, target should stay within near radius of NPC.\n" +
-            "Respond with JSON only.";
     }
 
     private static bool TryParseDecision(string json, NpcDecisionRequest request, out NpcDecision decision)

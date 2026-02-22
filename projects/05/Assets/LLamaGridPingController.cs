@@ -1,26 +1,31 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using Cysharp.Threading.Tasks;
+using LLama.Common;
+using LLama.Native;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 
 public class LLamaGridPingController : MonoBehaviour
 {
+    public LLamaModelRuntime Runtime;
     public LLamaNpcGrammarPlanner Planner;
     public GridLayoutGroup Grid;
 
     [Header("Runtime Init")]
     public bool AutoInitializeRuntime = true;
     public int RuntimeSessionCount = 1;
-    [TextArea(2, 5)]
-    public string RuntimeSystemPrompt = "You are a local inference runtime.";
+    public bool ClearHistoryPerPrompt = true;
 
     [Header("NPC")]
     public Vector2Int NpcGrid = new Vector2Int(0, 0);
     public LLamaNpcGrammarPlanner.NpcBehavior Behavior = LLamaNpcGrammarPlanner.NpcBehavior.Cautious;
     public int NearRadius = 3;
+    public TMP_Dropdown BehaviorDropdown;
+    public bool PopulateBehaviorDropdownOptions = true;
 
     [Header("Output")]
     public TMP_Text SystemPromptOutput;
@@ -31,20 +36,23 @@ public class LLamaGridPingController : MonoBehaviour
     private int _gridWidth;
     private int _gridHeight;
     private readonly List<Button> _gridButtons = new List<Button>();
+    private bool _sessionPrimedWithSystemPrompt;
+    private string _lastAppliedSystemPrompt = string.Empty;
 
     private void Awake()
     {
+        if (Runtime == null)
+        {
+            Runtime = GetComponent<LLamaModelRuntime>();
+        }
+
         if (Planner == null)
         {
             Planner = GetComponent<LLamaNpcGrammarPlanner>();
         }
 
-        if (Planner != null && Planner.Runtime == null)
-        {
-            Planner.Runtime = GetComponent<LLamaModelRuntime>();
-        }
-
         BindButtons();
+        BindBehaviorSelector();
     }
 
     private async void Start()
@@ -87,6 +95,48 @@ public class LLamaGridPingController : MonoBehaviour
         }
     }
 
+    private void BindBehaviorSelector()
+    {
+        if (BehaviorDropdown == null)
+        {
+            return;
+        }
+
+        if (PopulateBehaviorDropdownOptions)
+        {
+            BehaviorDropdown.ClearOptions();
+            BehaviorDropdown.AddOptions(new List<string>(Enum.GetNames(typeof(LLamaNpcGrammarPlanner.NpcBehavior))));
+        }
+
+        if (BehaviorDropdown.options == null || BehaviorDropdown.options.Count == 0)
+        {
+            Debug.LogWarning("BehaviorDropdown has no options. Assign options in inspector or enable PopulateBehaviorDropdownOptions.");
+            return;
+        }
+
+        var currentIndex = Mathf.Clamp((int)Behavior, 0, BehaviorDropdown.options.Count - 1);
+        BehaviorDropdown.SetValueWithoutNotify(currentIndex);
+        BehaviorDropdown.onValueChanged.RemoveListener(SetBehaviorFromDropdown);
+        BehaviorDropdown.onValueChanged.AddListener(SetBehaviorFromDropdown);
+        SetBehaviorFromDropdown(currentIndex);
+    }
+
+    public void SetBehavior(LLamaNpcGrammarPlanner.NpcBehavior behavior)
+    {
+        Behavior = behavior;
+    }
+
+    public void SetBehaviorFromDropdown(int behaviorIndex)
+    {
+        if (behaviorIndex < 0 || behaviorIndex >= Enum.GetValues(typeof(LLamaNpcGrammarPlanner.NpcBehavior)).Length)
+        {
+            Debug.LogWarning($"Invalid behavior index: {behaviorIndex}");
+            return;
+        }
+
+        Behavior = (LLamaNpcGrammarPlanner.NpcBehavior)behaviorIndex;
+    }
+
     private int ResolveGridWidth(int buttonCount)
     {
         if (Grid.constraint == GridLayoutGroup.Constraint.FixedColumnCount)
@@ -111,18 +161,18 @@ public class LLamaGridPingController : MonoBehaviour
             return false;
         }
 
-        if (Planner.Runtime == null)
+        if (Runtime == null)
         {
-            Planner.Runtime = GetComponent<LLamaModelRuntime>();
+            Runtime = GetComponent<LLamaModelRuntime>();
         }
 
-        if (Planner.Runtime == null)
+        if (Runtime == null)
         {
             Debug.LogError("LLamaGridPingController could not find LLamaModelRuntime.");
             return false;
         }
 
-        if (Planner.Runtime.IsInitialized)
+        if (Runtime.IsInitialized)
         {
             return true;
         }
@@ -130,7 +180,9 @@ public class LLamaGridPingController : MonoBehaviour
         SetGridInteractable(false);
         try
         {
-            await Planner.Runtime.InitializeAsync(Mathf.Max(1, RuntimeSessionCount), RuntimeSystemPrompt, cancel);
+            await Runtime.InitializeAsync(Mathf.Max(1, RuntimeSessionCount), string.Empty, cancel);
+            _sessionPrimedWithSystemPrompt = false;
+            _lastAppliedSystemPrompt = string.Empty;
             return true;
         }
         catch (Exception ex)
@@ -140,7 +192,7 @@ public class LLamaGridPingController : MonoBehaviour
         }
         finally
         {
-            SetGridInteractable(Planner.Runtime.IsInitialized);
+            SetGridInteractable(Runtime != null && Runtime.IsInitialized);
         }
     }
 
@@ -155,6 +207,41 @@ public class LLamaGridPingController : MonoBehaviour
         }
     }
 
+    private async UniTask EnsureSystemPromptAppliedAsync(string systemPrompt, CancellationToken cancel)
+    {
+        if (ClearHistoryPerPrompt || !_sessionPrimedWithSystemPrompt)
+        {
+            await Runtime.ClearActiveChatHistoryAsync(systemPrompt, cancel);
+            _sessionPrimedWithSystemPrompt = true;
+            _lastAppliedSystemPrompt = systemPrompt ?? string.Empty;
+            return;
+        }
+
+        if (!string.Equals(_lastAppliedSystemPrompt, systemPrompt ?? string.Empty, StringComparison.Ordinal))
+        {
+            Debug.Log("System prompt changed but ClearHistoryPerPrompt is disabled, so current session prompt remains active.");
+        }
+    }
+
+    private async UniTask<string> GenerateCompletionAsync(
+        string userPrompt,
+        InferenceParams inferenceParams,
+        Func<string, bool> stopPredicate,
+        CancellationToken cancel)
+    {
+        var completion = new StringBuilder(256);
+        await foreach (var token in Runtime.ChatAsync(userPrompt, inferenceParams, cancel))
+        {
+            completion.Append(token);
+            if (stopPredicate != null && stopPredicate(completion.ToString()))
+            {
+                break;
+            }
+        }
+
+        return completion.ToString().Trim();
+    }
+
     private async UniTaskVoid HandleGridClick(int buttonIndex)
     {
         var cancel = this.GetCancellationTokenOnDestroy();
@@ -163,42 +250,62 @@ public class LLamaGridPingController : MonoBehaviour
             return;
         }
 
-        var ping = new Vector2Int(buttonIndex % _gridWidth, buttonIndex / _gridWidth);
-
-        var request = new LLamaNpcGrammarPlanner.NpcDecisionRequest
+        try
         {
-            NpcGrid = NpcGrid,
-            PlayerPingGrid = ping,
-            Behavior = Behavior,
-            GridWidth = _gridWidth,
-            GridHeight = _gridHeight,
-            NearRadius = NearRadius
-        };
+            var ping = new Vector2Int(buttonIndex % _gridWidth, buttonIndex / _gridWidth);
+            var request = new LLamaNpcGrammarPlanner.NpcDecisionRequest
+            {
+                NpcGrid = NpcGrid,
+                PlayerPingGrid = ping,
+                Behavior = Behavior,
+                GridWidth = _gridWidth,
+                GridHeight = _gridHeight,
+                NearRadius = NearRadius
+            };
 
-        var trace = await Planner.DecideNpcGridWithTraceAsync(request, cancel);
+            Planner.BuildPrompts(request, out var normalizedRequest, out var systemPrompt, out var userPrompt);
 
-        if (SystemPromptOutput != null)
-        {
-            SystemPromptOutput.text = trace.system_prompt;
+            SafeLLamaGrammarHandle grammarHandle = null;
+            try
+            {
+                var inferenceParams = Planner.BuildInferenceParams(normalizedRequest, out grammarHandle, out var stopPredicate);
+                await EnsureSystemPromptAppliedAsync(systemPrompt, cancel);
+                var completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
+                var trace = Planner.BuildDecisionTrace(normalizedRequest, systemPrompt, userPrompt, completion);
+
+                if (SystemPromptOutput != null)
+                {
+                    SystemPromptOutput.text = trace.system_prompt;
+                }
+
+                if (UserPromptOutput != null)
+                {
+                    UserPromptOutput.text = trace.user_prompt;
+                }
+
+                if (CompletionOutput != null)
+                {
+                    CompletionOutput.text = trace.completion;
+                }
+
+                if (DecisionOutput != null)
+                {
+                    DecisionOutput.text = $"behavior={Behavior}, action={trace.decision.action}, target=({trace.decision.target_x},{trace.decision.target_y})";
+                }
+
+                Debug.Log($"[NPC Planner] Behavior={Behavior}");
+                Debug.Log($"[NPC Planner] System Prompt:\n{trace.system_prompt}");
+                Debug.Log($"[NPC Planner] User Prompt:\n{trace.user_prompt}");
+                Debug.Log($"[NPC Planner] Completion:\n{trace.completion}");
+            }
+            finally
+            {
+                grammarHandle?.Dispose();
+            }
         }
-
-        if (UserPromptOutput != null)
+        catch (Exception ex)
         {
-            UserPromptOutput.text = trace.user_prompt;
+            Debug.LogException(ex);
         }
-
-        if (CompletionOutput != null)
-        {
-            CompletionOutput.text = trace.completion;
-        }
-
-        if (DecisionOutput != null)
-        {
-            DecisionOutput.text = $"action={trace.decision.action}, target=({trace.decision.target_x},{trace.decision.target_y})";
-        }
-
-        Debug.Log($"[NPC Planner] System Prompt:\n{trace.system_prompt}");
-        Debug.Log($"[NPC Planner] User Prompt:\n{trace.user_prompt}");
-        Debug.Log($"[NPC Planner] Completion:\n{trace.completion}");
     }
 }
