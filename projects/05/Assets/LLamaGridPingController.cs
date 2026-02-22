@@ -44,6 +44,7 @@ public class LLamaGridPingController : MonoBehaviour
     private readonly Dictionary<int, TMP_Text> _gridButtonTextByIndex = new Dictionary<int, TMP_Text>();
     private bool _sessionPrimedWithSystemPrompt;
     private string _lastAppliedSystemPrompt = string.Empty;
+    private bool _isGenerating;
 
     private void Awake()
     {
@@ -303,14 +304,22 @@ public class LLamaGridPingController : MonoBehaviour
 
     private async UniTaskVoid HandleGridClick(int buttonIndex)
     {
-        var cancel = this.GetCancellationTokenOnDestroy();
-        if (!await EnsureRuntimeInitializedAsync(cancel))
+        if (_isGenerating)
         {
             return;
         }
 
+        var cancel = this.GetCancellationTokenOnDestroy();
+        _isGenerating = true;
+        SetGridInteractable(false);
+
         try
         {
+            if (!await EnsureRuntimeInitializedAsync(cancel))
+            {
+                return;
+            }
+
             var ping = new Vector2Int(buttonIndex % _gridWidth, buttonIndex / _gridWidth);
             var request = new LLamaNpcGrammarPlanner.NpcDecisionRequest
             {
@@ -331,22 +340,7 @@ public class LLamaGridPingController : MonoBehaviour
             {
                 var inferenceParams = Planner.BuildInferenceParams(normalizedRequest, out grammarHandle, out var stopPredicate);
                 await EnsureSystemPromptAppliedAsync(systemPrompt, cancel);
-                string completion;
-                try
-                {
-                    completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
-                }
-                catch (Exception ex) when (grammarHandle != null)
-                {
-                    Debug.LogWarning($"Native grammar generation failed. Retrying without grammar. {ex.GetType().Name}: {ex.Message}");
-					          Debug.LogError($"Native grammar generation failed. Retrying without grammar. {ex.Message}");
-					          grammarHandle.Dispose();
-                    grammarHandle = null;
-
-                    var fallbackInferenceParams = Planner.BuildInferenceParams(normalizedRequest, false, out var fallbackGrammarHandle, out stopPredicate);
-                    fallbackGrammarHandle?.Dispose();
-                    completion = await GenerateCompletionAsync(userPrompt, fallbackInferenceParams, stopPredicate, cancel);
-                }
+                var completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
 
                 var trace = Planner.BuildDecisionTrace(normalizedRequest, systemPrompt, userPrompt, completion);
 
@@ -381,12 +375,22 @@ public class LLamaGridPingController : MonoBehaviour
             }
             finally
             {
-                grammarHandle?.Dispose();
+                if (grammarHandle != null)
+                {
+                    // Defer disposal one frame to reduce native lifetime races.
+                    await UniTask.Yield(PlayerLoopTiming.LastPostLateUpdate);
+                    grammarHandle.Dispose();
+                }
             }
         }
         catch (Exception ex)
         {
             Debug.LogException(ex);
+        }
+        finally
+        {
+            _isGenerating = false;
+            SetGridInteractable(Runtime != null && Runtime.IsInitialized);
         }
     }
 }

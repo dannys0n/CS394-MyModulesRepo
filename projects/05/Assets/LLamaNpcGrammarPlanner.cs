@@ -85,7 +85,9 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         }
 
         stopPredicate = null;
-        if (TrimToFirstJsonObject)
+        // With native grammar enabled, output is already constrained to one JSON object.
+        // Avoid early-stop races while the native backend may still be finalizing generation.
+        if (TrimToFirstJsonObject && grammarHandle == null)
         {
             stopPredicate = text => TryExtractFirstJsonObject(text, out _);
         }
