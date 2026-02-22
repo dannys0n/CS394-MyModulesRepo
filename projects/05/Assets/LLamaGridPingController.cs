@@ -27,6 +27,11 @@ public class LLamaGridPingController : MonoBehaviour
     public TMP_Dropdown BehaviorDropdown;
     public bool PopulateBehaviorDropdownOptions = true;
 
+    [Header("Grid Labels")]
+    public string NpcCellLabel = "N";
+    public string PlayerCellLabel = "P";
+    public string OverlapCellLabel = "NP";
+
     [Header("Output")]
     public TMP_Text SystemPromptOutput;
     public TMP_Text UserPromptOutput;
@@ -36,6 +41,7 @@ public class LLamaGridPingController : MonoBehaviour
     private int _gridWidth;
     private int _gridHeight;
     private readonly List<Button> _gridButtons = new List<Button>();
+    private readonly Dictionary<int, TMP_Text> _gridButtonTextByIndex = new Dictionary<int, TMP_Text>();
     private bool _sessionPrimedWithSystemPrompt;
     private string _lastAppliedSystemPrompt = string.Empty;
 
@@ -57,6 +63,8 @@ public class LLamaGridPingController : MonoBehaviour
 
     private async void Start()
     {
+        RefreshGridCellTexts(NpcGrid, null);
+
         if (!AutoInitializeRuntime)
         {
             return;
@@ -68,6 +76,7 @@ public class LLamaGridPingController : MonoBehaviour
     private void BindButtons()
     {
         _gridButtons.Clear();
+        _gridButtonTextByIndex.Clear();
 
         if (Grid == null)
         {
@@ -89,6 +98,8 @@ public class LLamaGridPingController : MonoBehaviour
             }
 
             _gridButtons.Add(button);
+            _gridButtonTextByIndex[i] = button.GetComponentInChildren<TMP_Text>(true);
+
             var index = i;
             button.onClick.RemoveAllListeners();
             button.onClick.AddListener(() => HandleGridClick(index).Forget());
@@ -207,6 +218,59 @@ public class LLamaGridPingController : MonoBehaviour
         }
     }
 
+    private void ClearGridButtonTexts()
+    {
+        foreach (var text in _gridButtonTextByIndex.Values)
+        {
+            if (text != null)
+            {
+                text.text = string.Empty;
+            }
+        }
+    }
+
+    private void SetGridCellText(Vector2Int position, string label)
+    {
+        if (_gridWidth <= 0 || _gridHeight <= 0)
+        {
+            return;
+        }
+
+        var clamped = new Vector2Int(
+            Mathf.Clamp(position.x, 0, _gridWidth - 1),
+            Mathf.Clamp(position.y, 0, _gridHeight - 1));
+
+        var index = clamped.y * _gridWidth + clamped.x;
+        if (_gridButtonTextByIndex.TryGetValue(index, out var text) && text != null)
+        {
+            text.text = label ?? string.Empty;
+        }
+    }
+
+    private void RefreshGridCellTexts(Vector2Int npcPosition, Vector2Int? playerPosition)
+    {
+        ClearGridButtonTexts();
+
+        var playerHasValue = playerPosition.HasValue;
+        var player = playerHasValue ? playerPosition.Value : default;
+
+        if (playerHasValue && player == npcPosition)
+        {
+            var overlapLabel = string.IsNullOrWhiteSpace(OverlapCellLabel)
+                ? $"{NpcCellLabel}/{PlayerCellLabel}"
+                : OverlapCellLabel;
+            SetGridCellText(npcPosition, overlapLabel);
+            return;
+        }
+
+        SetGridCellText(npcPosition, NpcCellLabel);
+
+        if (playerHasValue)
+        {
+            SetGridCellText(player, PlayerCellLabel);
+        }
+    }
+
     private async UniTask EnsureSystemPromptAppliedAsync(string systemPrompt, CancellationToken cancel)
     {
         if (ClearHistoryPerPrompt || !_sessionPrimedWithSystemPrompt)
@@ -264,6 +328,7 @@ public class LLamaGridPingController : MonoBehaviour
             };
 
             Planner.BuildPrompts(request, out var normalizedRequest, out var systemPrompt, out var userPrompt);
+            RefreshGridCellTexts(normalizedRequest.NpcGrid, normalizedRequest.PlayerPingGrid);
 
             SafeLLamaGrammarHandle grammarHandle = null;
             try
