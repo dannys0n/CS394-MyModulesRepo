@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
@@ -23,55 +23,67 @@ public class LLamaModelRuntime : MonoBehaviour
     private ExecutorBaseState _emptyState;
     private readonly List<ExecutorBaseState> _executorStates = new List<ExecutorBaseState>();
     private readonly List<ChatSession> _chatSessions = new List<ChatSession>();
+    private readonly SemaphoreSlim _initSemaphore = new SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _executorSemaphore = new SemaphoreSlim(1, 1);
     private int _activeSession;
 
     public bool IsInitialized => _executor != null;
 
     public async UniTask InitializeAsync(int sessionCount, string systemPrompt, CancellationToken cancel = default)
     {
-        if (IsInitialized)
+        await _initSemaphore.WaitAsync(cancel);
+        try
         {
-            return;
+            if (IsInitialized)
+            {
+                return;
+            }
+
+            if (sessionCount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sessionCount), "Session count must be > 0.");
+            }
+
+            EnsureCudaNativeLibrariesLoaded();
+            LogNativeBackendInfo();
+
+            var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
+            {
+                ContextSize = (uint?)ContextSize,
+                Seed = 1337,
+                GpuLayerCount = GpuLayerCount,
+                NoKqvOffload = DisableKqvOffload
+            };
+
+            await UniTask.SwitchToThreadPool();
+            cancel.ThrowIfCancellationRequested();
+
+            _model = LLamaWeights.LoadFromFile(parameters);
+            _context = _model.CreateContext(parameters);
+            _executor = new InteractiveExecutor(_context);
+            _emptyState = _executor.GetStateData();
+
+            _chatSessions.Clear();
+            _executorStates.Clear();
+            for (var i = 0; i < sessionCount; i++)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var session = new ChatSession(_executor);
+                session.AddSystemMessage(systemPrompt);
+                _chatSessions.Add(session);
+                _executorStates.Add(null);
+            }
+
+            _activeSession = 0;
         }
-
-        if (sessionCount <= 0)
+        finally
         {
-            throw new ArgumentOutOfRangeException(nameof(sessionCount), "Session count must be > 0.");
+            _initSemaphore.Release();
+            await UniTask.SwitchToMainThread();
         }
-
-        EnsureCudaNativeLibrariesLoaded();
-        LogNativeBackendInfo();
-
-        var parameters = new ModelParams(Application.streamingAssetsPath + "/" + ModelPath)
-        {
-            ContextSize = (uint?)ContextSize,
-            Seed = 1337,
-            GpuLayerCount = GpuLayerCount,
-            NoKqvOffload = DisableKqvOffload
-        };
-
-        await UniTask.SwitchToThreadPool();
-        cancel.ThrowIfCancellationRequested();
-        _model = LLamaWeights.LoadFromFile(parameters);
-        _context = _model.CreateContext(parameters);
-        _executor = new InteractiveExecutor(_context);
-        _emptyState = _executor.GetStateData();
-
-        _chatSessions.Clear();
-        _executorStates.Clear();
-        for (var i = 0; i < sessionCount; i++)
-        {
-            var session = new ChatSession(_executor);
-            session.AddSystemMessage(systemPrompt);
-            _chatSessions.Add(session);
-            _executorStates.Add(null);
-        }
-
-        _activeSession = 0;
-        await UniTask.SwitchToMainThread();
     }
 
-    public void SwitchSession(int index)
+    public async UniTask SwitchSessionAsync(int index, CancellationToken cancel = default)
     {
         EnsureInitialized();
         if (index < 0 || index >= _chatSessions.Count)
@@ -79,48 +91,79 @@ public class LLamaModelRuntime : MonoBehaviour
             throw new ArgumentOutOfRangeException(nameof(index));
         }
 
-        SaveActiveSession();
-        _activeSession = index;
-        var state = _executorStates[_activeSession] ?? _emptyState;
-        _ = _executor.LoadState(state);
+        await _executorSemaphore.WaitAsync(cancel);
+        try
+        {
+            SaveActiveSession();
+            _activeSession = index;
+            var state = _executorStates[_activeSession] ?? _emptyState;
+            await _executor.LoadState(state);
+        }
+        finally
+        {
+            _executorSemaphore.Release();
+        }
     }
 
     public IReadOnlyList<ChatHistory.Message> GetActiveMessages()
     {
         EnsureInitialized();
-        return _chatSessions[_activeSession].History.Messages;
+        return new List<ChatHistory.Message>(_chatSessions[_activeSession].History.Messages);
     }
 
-    public IAsyncEnumerable<string> ChatAsync(string userMessage, InferenceParams inferenceParams)
+    public async IAsyncEnumerable<string> ChatAsync(
+        string userMessage,
+        InferenceParams inferenceParams,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancel = default)
     {
         EnsureInitialized();
-        return _chatSessions[_activeSession].ChatAsync(new ChatHistory.Message(AuthorRole.User, userMessage), inferenceParams);
+        await _executorSemaphore.WaitAsync(cancel);
+        try
+        {
+            await foreach (var token in _chatSessions[_activeSession].ChatAsync(new ChatHistory.Message(AuthorRole.User, userMessage), inferenceParams))
+            {
+                cancel.ThrowIfCancellationRequested();
+                yield return token;
+            }
+        }
+        finally
+        {
+            _executorSemaphore.Release();
+        }
     }
 
     public async UniTask<string> CompleteOnceAsync(string systemPrompt, string userPrompt, InferenceParams inferenceParams, CancellationToken cancel = default)
     {
         EnsureInitialized();
 
-        var savedState = _executor.GetStateData();
+        await _executorSemaphore.WaitAsync(cancel);
         try
         {
-            var oneShotSession = new ChatSession(_executor);
-            if (!string.IsNullOrWhiteSpace(systemPrompt))
+            var savedState = _executor.GetStateData();
+            try
             {
-                oneShotSession.AddSystemMessage(systemPrompt);
-            }
+                var oneShotSession = new ChatSession(_executor);
+                if (!string.IsNullOrWhiteSpace(systemPrompt))
+                {
+                    oneShotSession.AddSystemMessage(systemPrompt);
+                }
 
-            var parts = new List<string>(128);
-            await foreach (var token in ChatConcurrent(oneShotSession.ChatAsync(new ChatHistory.Message(AuthorRole.User, userPrompt), inferenceParams), cancel))
+                var parts = new List<string>(128);
+                await foreach (var token in ChatConcurrent(oneShotSession.ChatAsync(new ChatHistory.Message(AuthorRole.User, userPrompt), inferenceParams), cancel))
+                {
+                    parts.Add(token);
+                }
+
+                return string.Concat(parts).Trim();
+            }
+            finally
             {
-                parts.Add(token);
+                await _executor.LoadState(savedState);
             }
-
-            return string.Concat(parts).Trim();
         }
         finally
         {
-            await _executor.LoadState(savedState);
+            _executorSemaphore.Release();
         }
     }
 
@@ -151,6 +194,8 @@ public class LLamaModelRuntime : MonoBehaviour
     {
         _context?.Dispose();
         _model?.Dispose();
+        _executorSemaphore.Dispose();
+        _initSemaphore.Dispose();
     }
 
     [DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)]

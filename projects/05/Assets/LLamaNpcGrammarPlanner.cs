@@ -1,10 +1,13 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using LLama.Common;
 using LLama.Grammars;
+using LLama.Native;
 
 public class LLamaNpcGrammarPlanner : MonoBehaviour
 {
@@ -13,10 +16,13 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
     [TextArea(2, 6)]
     public string PlannerSystemPrompt = "You are an NPC tactical planner for a grid game. Respond with exactly one JSON object.";
 
+    [Header("Generation")]
     public float Temperature = 0.15f;
     public int MaxTokens = 64;
     public float RepeatPenalty = 1.05f;
     public int RepeatLastTokensCount = 32;
+    public bool UseNativeGrammar = false;
+    public bool TrimToFirstJsonObject = true;
 
     public enum NpcBehavior
     {
@@ -54,13 +60,6 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
         public NpcDecision decision;
     }
 
-    private const string NpcDecisionGrammarGbnf =
-        "root ::= ws \"{\" ws \"\\\"action\\\"\" ws \":\" ws action ws \",\" ws \"\\\"target_x\\\"\" ws \":\" ws int ws \",\" ws \"\\\"target_y\\\"\" ws \":\" ws int ws \"}\" ws\n" +
-        "action ::= \"\\\"hold\\\"\" | \"\\\"move_to_ping\\\"\" | \"\\\"move_near_self\\\"\"\n" +
-        "int ::= \"-\"? [0-9] [0-9]*\n" +
-        "ws ::= [ \\t\\n\\r]*\n";
-
-    private static readonly Grammar NpcDecisionGrammar = Grammar.Parse(NpcDecisionGrammarGbnf, "root");
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { IncludeFields = true };
 
     public async UniTask<NpcDecision> DecideNpcGridAsync(NpcDecisionRequest request, CancellationToken cancel = default)
@@ -78,38 +77,140 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
         request = Normalize(request);
         var userPrompt = BuildPrompt(request);
-        using var grammarHandle = NpcDecisionGrammar.CreateInstance();
 
-        var inferenceParams = new InferenceParams
+        SafeLLamaGrammarHandle grammarHandle = null;
+        try
         {
-            Temperature = Temperature,
-            MaxTokens = MaxTokens,
-            RepeatPenalty = RepeatPenalty,
-            RepeatLastTokensCount = RepeatLastTokensCount,
-            Grammar = grammarHandle
-        };
-
-        var completion = await Runtime.CompleteOnceAsync(PlannerSystemPrompt, userPrompt, inferenceParams, cancel);
-
-        NpcDecision decision;
-        if (!TryParseDecision(completion, request, out decision))
-        {
-            Debug.LogWarning($"NPC grammar parse failed. Raw output: {completion}");
-            decision = new NpcDecision
+            if (UseNativeGrammar)
             {
-                action = "hold",
-                target_x = request.NpcGrid.x,
-                target_y = request.NpcGrid.y
+                var grammar = Grammar.Parse(BuildDecisionGrammarGbnf(request), "root");
+                grammarHandle = grammar.CreateInstance();
+            }
+
+            var inferenceParams = new InferenceParams
+            {
+                Temperature = Temperature,
+                MaxTokens = MaxTokens,
+                RepeatPenalty = RepeatPenalty,
+                RepeatLastTokensCount = RepeatLastTokensCount,
+                Grammar = grammarHandle,
+                AntiPrompts = new List<string> { "}", "<|im_end|>" }
+            };
+
+            var completion = await Runtime.CompleteOnceAsync(PlannerSystemPrompt, userPrompt, inferenceParams, cancel);
+
+            if (TrimToFirstJsonObject && TryExtractFirstJsonObject(completion, out var extractedJson))
+            {
+                completion = extractedJson;
+            }
+
+            NpcDecision decision;
+            if (!TryParseDecision(completion, request, out decision))
+            {
+                Debug.LogWarning($"NPC planner parse failed. Raw output: {completion}");
+                decision = new NpcDecision
+                {
+                    action = "hold",
+                    target_x = request.NpcGrid.x,
+                    target_y = request.NpcGrid.y
+                };
+            }
+
+            return new NpcDecisionTrace
+            {
+                system_prompt = PlannerSystemPrompt,
+                user_prompt = userPrompt,
+                completion = completion,
+                decision = decision
             };
         }
-
-        return new NpcDecisionTrace
+        finally
         {
-            system_prompt = PlannerSystemPrompt,
-            user_prompt = userPrompt,
-            completion = completion,
-            decision = decision
-        };
+            grammarHandle?.Dispose();
+        }
+    }
+
+    private static string BuildDecisionGrammarGbnf(NpcDecisionRequest request)
+    {
+        // Avoid character classes/ranges for older native backends; use explicit literals only.
+        var xValues = string.Join(" | ", Enumerable.Range(0, request.GridWidth).Select(v => $"\"{v}\""));
+        var yValues = string.Join(" | ", Enumerable.Range(0, request.GridHeight).Select(v => $"\"{v}\""));
+
+        return
+            "root ::= \"{\" \"\\\"action\\\"\" \":\" action \",\" \"\\\"target_x\\\"\" \":\" x \",\" \"\\\"target_y\\\"\" \":\" y \"}\"\n" +
+            "action ::= \"\\\"hold\\\"\" | \"\\\"move_to_ping\\\"\" | \"\\\"move_near_self\\\"\"\n" +
+            $"x ::= {xValues}\n" +
+            $"y ::= {yValues}\n";
+    }
+
+    private static bool TryExtractFirstJsonObject(string text, out string json)
+    {
+        json = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var start = text.IndexOf('{');
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+
+        for (var i = start; i < text.Length; i++)
+        {
+            var c = text[i];
+
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (c == '{')
+            {
+                depth++;
+                continue;
+            }
+
+            if (c == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    json = text.Substring(start, i - start + 1);
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static NpcDecisionRequest Normalize(NpcDecisionRequest request)

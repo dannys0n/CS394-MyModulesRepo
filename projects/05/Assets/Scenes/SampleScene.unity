@@ -870,6 +870,7 @@ GameObject:
   - component: {fileID: 535547981}
   - component: {fileID: 535547980}
   - component: {fileID: 535547984}
+  - component: {fileID: 535547985}
   m_Layer: 5
   m_Name: Example
   m_TagString: Untagged
@@ -972,19 +973,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f25404d2f3548d943b1f2c024f63011f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+  Runtime: {fileID: 535547985}
+  SystemPrompt: You are Bob, a helpful, kind, honest, and precise assistant.
   MaxNewTokens: 64
   RepeatPenalty: 1.1
   RepeatLastTokensCount: 32
   MaxSameTokenInRow: 32
-  GpuLayerCount: 24
-  ContextSize: 2048
-  DisableKqvOffload: 0
-  SystemPrompt: You are Bob, a helpful, kind, honest, and precise assistant.
   Output: {fileID: 452916404}
   Input: {fileID: 1754878786}
   SessionSelector: {fileID: 409754416}
   Submit: {fileID: 1221407569}
+--- !u!114 &535547985
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 535547979}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67bed0edcb5a8974099efa135f266090, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+  GpuLayerCount: 20
+  ContextSize: 2048
+  DisableKqvOffload: 1
 --- !u!1 &675596094
 GameObject:
   m_ObjectHideFlags: 0

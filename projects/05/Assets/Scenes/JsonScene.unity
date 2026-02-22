@@ -5273,7 +5273,7 @@ GameObject:
   - component: {fileID: 1460258508}
   - component: {fileID: 1460258507}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: Llama
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5308,6 +5308,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Planner: {fileID: 1460258508}
   Grid: {fileID: 1338220759}
+  AutoInitializeRuntime: 1
+  RuntimeSessionCount: 1
+  RuntimeSystemPrompt: You are a local inference runtime.
   NpcGrid: {x: 5, y: 5}
   Behavior: 2
   NearRadius: 3
@@ -5334,6 +5337,8 @@ MonoBehaviour:
   MaxTokens: 64
   RepeatPenalty: 1.05
   RepeatLastTokensCount: 32
+  UseNativeGrammar: 0
+  TrimToFirstJsonObject: 1
 --- !u!114 &1460258509
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5347,7 +5352,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-  GpuLayerCount: 20
+  GpuLayerCount: 24
   ContextSize: 2048
   DisableKqvOffload: 1
 --- !u!1 &1507796316

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -88,7 +88,7 @@ public class LLamaSharpTestScript : MonoBehaviour
             var previousToken = string.Empty;
             var sameTokenCount = 0;
 
-            await foreach (var token in ChatConcurrent(Runtime.ChatAsync(userMessage, inferenceParams), cancel))
+            await foreach (var token in ChatConcurrent(Runtime.ChatAsync(userMessage, inferenceParams, cancel), cancel))
             {
                 Output.text += token;
                 if (token == previousToken)
@@ -121,7 +121,12 @@ public class LLamaSharpTestScript : MonoBehaviour
 
     private void SwitchSession(int index)
     {
-        Runtime.SwitchSession(index);
+        SwitchSessionAsync(index).Forget();
+    }
+
+    private async UniTaskVoid SwitchSessionAsync(int index)
+    {
+        await Runtime.SwitchSessionAsync(index, this.GetCancellationTokenOnDestroy());
         Output.text = "User: ";
         foreach (var message in Runtime.GetActiveMessages())
         {
