@@ -14,6 +14,15 @@ using static LLama.StatefulExecutorBase;
 
 public class LLamaSharpTestScript : MonoBehaviour
 {
+    [Serializable]
+    public class FewShotExample
+    {
+        [TextArea(2, 6)]
+        public string UserPrompt;
+        [TextArea(2, 6)]
+        public string AssistantPrompt;
+    }
+
     public string ModelPath = "models/qwen2.5-1.5b-instruct-q4_k_m.gguf"; // change it to your own model path
     public int MaxNewTokens = 256;
     public float RepeatPenalty = 1.1f;
@@ -24,6 +33,8 @@ public class LLamaSharpTestScript : MonoBehaviour
     public bool DisableKqvOffload = true;
     [TextArea(3, 10)]
     public string SystemPrompt = "You are Bob, a helpful, kind, honest, and precise assistant.";
+    [Tooltip("Optional few-shot examples injected into each session before the first live user message.")]
+    public List<FewShotExample> FewShotExamples = new List<FewShotExample>();
     public TMP_Text Output;
     public TMP_InputField Input;
     public TMP_Dropdown SessionSelector;
@@ -72,10 +83,11 @@ public class LLamaSharpTestScript : MonoBehaviour
             foreach (var option in SessionSelector.options)
             {
                 var session = new ChatSession(ex);
-                // This won't process the system prompt until the first user message is received
+                // This won't process system/few-shot prompts until the first user message is received
                 // to pre-process it you'd need to look into context.Decode() method.
                 // Create an issue on github if you need help with that.
                 session.AddSystemMessage(SystemPrompt);
+                ApplyFewShotExamples(session);
                 _chatSessions.Add(session);
                 _executorStates.Add(null);
             }
@@ -114,7 +126,7 @@ public class LLamaSharpTestScript : MonoBehaviour
 
             var inferenceParams = new InferenceParams()
             {
-                Temperature = 0.6f,
+                Temperature = 0.3f,
                 MaxTokens = MaxNewTokens,
                 RepeatPenalty = RepeatPenalty,
                 RepeatLastTokensCount = RepeatLastTokensCount,
@@ -319,6 +331,65 @@ public class LLamaSharpTestScript : MonoBehaviour
         catch (Exception e)
         {
             Debug.LogWarning($"Could not query LLama native backend info: {e.Message}");
+        }
+    }
+
+    public void SetFewShotExamples(IEnumerable<FewShotExample> examples)
+    {
+        FewShotExamples = examples == null ? new List<FewShotExample>() : new List<FewShotExample>(examples);
+    }
+
+    public void AddFewShotExample(string userPrompt, string assistantPrompt)
+    {
+        if (FewShotExamples == null)
+        {
+            FewShotExamples = new List<FewShotExample>();
+        }
+
+        FewShotExamples.Add(new FewShotExample
+        {
+            UserPrompt = userPrompt ?? string.Empty,
+            AssistantPrompt = assistantPrompt ?? string.Empty
+        });
+    }
+
+    private void ApplyFewShotExamples(ChatSession session)
+    {
+        if (FewShotExamples == null || FewShotExamples.Count == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < FewShotExamples.Count; i++)
+        {
+            var example = FewShotExamples[i];
+            if (example == null)
+            {
+                continue;
+            }
+
+            var hasUserPrompt = !string.IsNullOrWhiteSpace(example.UserPrompt);
+            var hasAssistantPrompt = !string.IsNullOrWhiteSpace(example.AssistantPrompt);
+
+            if (!hasUserPrompt && !hasAssistantPrompt)
+            {
+                continue;
+            }
+
+            if (hasUserPrompt)
+            {
+                session.AddUserMessage(example.UserPrompt.Trim());
+            }
+
+            if (hasAssistantPrompt)
+            {
+                session.AddAssistantMessage(example.AssistantPrompt.Trim());
+            }
+
+            if (hasUserPrompt != hasAssistantPrompt)
+            {
+                Debug.LogWarning($"Few-shot example #{i} has only one side of the exchange. Consider providing both prompts.");
+            }
         }
     }
 }
