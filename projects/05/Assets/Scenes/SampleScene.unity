@@ -1823,11 +1823,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ModelPath: models/qwen2.5-3b-instruct-q4_k_m.gguf
-  temperature: 0.9
+  temperature: 0.3
   MaxNewTokens: 32
   RepeatPenalty: 1.15
   RepeatLastTokensCount: 32
-  MaxSameTokenInRow: 4
+  MaxSameTokenInRow: 32
   GpuLayerCount: 32
   ContextSize: 4096
   DisableKqvOffload: 1
@@ -1890,14 +1890,20 @@ MonoBehaviour:
     User: 1/0
 
     Assistant: ERROR(divide_by_zero).
+    Bold strategy.
 
     
 
-    User:
-    (2+3
+    User: (2+3
 
-    Assistant: ERROR(mismatched_parentheses). Parentheses are a lifestyle
-    choice.'
+    Assistant: ERROR(mismatched_parentheses).
+    Parentheses are a lifestyle choice.
+
+
+    User: 0.1+0.2
+
+    Assistant: 0.3000000000.
+    Floating point: enjoy the illusion.'
   FewShotExamples:
   - UserPrompt: 19*7
     AssistantPrompt: 133. Arithmetic achieved.
