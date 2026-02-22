@@ -12,15 +12,13 @@ Simple Unity scene that runs a local LLama model with LLamaSharp and CUDA.
 
 1. Open this project folder in Unity Hub.
 2. From the project root, run bat script:
-3. Open Unity and install any model into StreamingAssets/models (SampleScene assumes qwen2.5-3b-instruct-q4_k_m.gguf).
-
 ```bat
 setup_cuda.bat
 ```
+3. install any model into StreamingAssets/models
 
-1. Reopen Unity and let it finish reimporting assets.
-2. In Unity, open NuGetForUnity and restore packages if prompted.
-3. Confirm these files exist:
+4. In Unity, open NuGetForUnity and restore packages if prompted.
+5. Confirm these files exist:
    - `Assets/Plugins/x86_64/llama.dll`
    - `Assets/Plugins/x86_64/cudart64_12.dll`
    - `Assets/Plugins/x86_64/cublas64_12.dll`
@@ -33,7 +31,8 @@ setup_cuda.bat
 3. Use the in-scene calculator UI to send a prompt.
 
 ## Troubleshoot
-1. if token generation appears unusual, look at Gameobject Calculator/Logic and change Gpu Layer Count to a smaller amount (0=CPU)
+1. if cannot find model, look at Gameobject Calculator/Logic and change model name (SampleScene assumes qwen2.5-3b-instruct-q4_k_m.gguf).
+2. if token generation appears unusual, look at Gameobject Calculator/Logic and change Gpu Layer Count (0=CPU)
 
 ## Screenshots
 

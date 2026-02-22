@@ -1828,7 +1828,7 @@ MonoBehaviour:
   RepeatPenalty: 1.15
   RepeatLastTokensCount: 32
   MaxSameTokenInRow: 32
-  GpuLayerCount: 32
+  GpuLayerCount: -1
   ContextSize: 4096
   DisableKqvOffload: 0
   SystemPrompt: 'You are CALC-UNIT: a dry, sarcastic, unenthusiastic, short-spoken
