@@ -28,9 +28,9 @@ public class LLamaGridPingController : MonoBehaviour
     public bool PopulateBehaviorDropdownOptions = true;
 
     [Header("Grid Labels")]
-    public string NpcCellLabel = "N";
-    public string PlayerCellLabel = "P";
-    public string OverlapCellLabel = "NP";
+    public string NpcCellLabel = "NPC";
+    public string PlayerCellLabel = "player";
+    public string OverlapCellLabel = "player + NPC";
 
     [Header("Output")]
     public TMP_Text SystemPromptOutput;
@@ -63,7 +63,7 @@ public class LLamaGridPingController : MonoBehaviour
 
     private async void Start()
     {
-        RefreshGridCellTexts(NpcGrid, null);
+        ClearGridButtonTexts();
 
         if (!AutoInitializeRuntime)
         {
@@ -247,28 +247,23 @@ public class LLamaGridPingController : MonoBehaviour
         }
     }
 
-    private void RefreshGridCellTexts(Vector2Int npcPosition, Vector2Int? playerPosition)
+    private void MarkPlayerCell(Vector2Int playerPosition)
     {
-        ClearGridButtonTexts();
+        SetGridCellText(playerPosition, PlayerCellLabel);
+    }
 
-        var playerHasValue = playerPosition.HasValue;
-        var player = playerHasValue ? playerPosition.Value : default;
-
-        if (playerHasValue && player == npcPosition)
+    private void MarkNpcCellFromDecision(Vector2Int playerPosition, Vector2Int npcPosition)
+    {
+        if (npcPosition == playerPosition)
         {
             var overlapLabel = string.IsNullOrWhiteSpace(OverlapCellLabel)
-                ? $"{NpcCellLabel}/{PlayerCellLabel}"
+                ? $"{PlayerCellLabel} + {NpcCellLabel}"
                 : OverlapCellLabel;
-            SetGridCellText(npcPosition, overlapLabel);
+            SetGridCellText(playerPosition, overlapLabel);
             return;
         }
 
         SetGridCellText(npcPosition, NpcCellLabel);
-
-        if (playerHasValue)
-        {
-            SetGridCellText(player, PlayerCellLabel);
-        }
     }
 
     private async UniTask EnsureSystemPromptAppliedAsync(string systemPrompt, CancellationToken cancel)
@@ -328,7 +323,8 @@ public class LLamaGridPingController : MonoBehaviour
             };
 
             Planner.BuildPrompts(request, out var normalizedRequest, out var systemPrompt, out var userPrompt);
-            RefreshGridCellTexts(normalizedRequest.NpcGrid, normalizedRequest.PlayerPingGrid);
+            ClearGridButtonTexts();
+            MarkPlayerCell(normalizedRequest.PlayerPingGrid);
 
             SafeLLamaGrammarHandle grammarHandle = null;
             try
@@ -337,6 +333,9 @@ public class LLamaGridPingController : MonoBehaviour
                 await EnsureSystemPromptAppliedAsync(systemPrompt, cancel);
                 var completion = await GenerateCompletionAsync(userPrompt, inferenceParams, stopPredicate, cancel);
                 var trace = Planner.BuildDecisionTrace(normalizedRequest, systemPrompt, userPrompt, completion);
+
+                var npcTarget = new Vector2Int(trace.decision.target_x, trace.decision.target_y);
+                MarkNpcCellFromDecision(normalizedRequest.PlayerPingGrid, npcTarget);
 
                 if (SystemPromptOutput != null)
                 {

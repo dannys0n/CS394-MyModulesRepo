@@ -125,7 +125,6 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
     private string BuildSystemPrompt(NpcDecisionRequest request)
     {
-        var behavior = request.Behavior.ToString().ToLowerInvariant();
         var baseInstruction = string.IsNullOrWhiteSpace(PlannerBaseInstruction)
             ? "You are an NPC tactical planner."
             : PlannerBaseInstruction.Trim();
@@ -134,8 +133,6 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
             $"{baseInstruction}\n" +
             "Pick one NPC action from: hold, move_to_ping, move_near_self.\n" +
             $"Grid width={request.GridWidth}, height={request.GridHeight}.\n" +
-            $"NPC at x={request.NpcGrid.x}, y={request.NpcGrid.y}.\n" +
-            $"NPC behavior={behavior}. Near radius={request.NearRadius}.\n" +
             "Rules:\n" +
             "- aggressive prefers move_to_ping.\n" +
             "- cautious prefers move_near_self or hold.\n" +
@@ -150,7 +147,11 @@ public class LLamaNpcGrammarPlanner : MonoBehaviour
 
     private static string BuildUserPrompt(NpcDecisionRequest request)
     {
-        return $"ping_x={request.PlayerPingGrid.x}, ping_y={request.PlayerPingGrid.y}";
+        var behavior = request.Behavior.ToString().ToLowerInvariant();
+        return
+            $"NPC at x={request.NpcGrid.x}, y={request.NpcGrid.y}.\n" +
+            $"NPC behavior={behavior}. Near radius={request.NearRadius}.\n" +
+            $"ping_x={request.PlayerPingGrid.x}, ping_y={request.PlayerPingGrid.y}";
     }
 
     private static NpcDecision BuildFallbackDecision(NpcDecisionRequest request)
