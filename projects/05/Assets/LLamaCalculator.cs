@@ -14,6 +14,7 @@ using System.Text.RegularExpressions;
 public class LLamaCalculator : MonoBehaviour
 {
 	private static readonly Regex RoleLabelRegex = new Regex(@"\b(?:User|Assistant)\s*:", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex EscapedNewlineRegex = new Regex(@"(?<!\\)\\r\\n|(?<!\\)\\n|(?<!\\)\\r", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     [Serializable]
     public class FewShotExample
@@ -231,7 +232,7 @@ public class LLamaCalculator : MonoBehaviour
         }
 
         OutputText.text += value;
-        //OutputText.text = RemoveRoleLabels(OutputText.text);
+        OutputText.text = SanitizeOutputForUnity(OutputText.text);
     }
 
     private static string RemoveRoleLabels(string output)
@@ -242,6 +243,18 @@ public class LLamaCalculator : MonoBehaviour
         }
 
         return RoleLabelRegex.Replace(output, string.Empty);
+    }
+
+    private static string SanitizeOutputForUnity(string output)
+    {
+        if (string.IsNullOrEmpty(output))
+        {
+            return string.Empty;
+        }
+
+        var normalized = output.Replace("\r\n", "\n").Replace('\r', '\n');
+        return normalized = EscapedNewlineRegex.Replace(normalized, "\n");
+        return RemoveRoleLabels(normalized);
     }
 
     private void ApplyFewShotExamples(ChatSession session)
