@@ -86,6 +86,6 @@ What I would change:
 Remove the aspect ratio parameter; it may have just introduced noise. We would assume a square aspect ratio for all completions. <br>
 One possible extension would be to have a dedicated model also for 3d voronoi, I am curious of its reliability.
 
-Generally, seeds over hotspots tended to create more ideal results. But then there were cases where being placed in the middle of 2 or more was ideal. Next time, I would want to create and validate some training data that has more nuanced placements that would place directly on top, nearby, or split clusters, based on the collective weights of close hotspots.
+Generally, seeds over hotspots tended to create more ideal results. But then there were cases where being placed in the middle of 2 or more was ideal. Next time, I would want to create and validate some training data that has more nuanced placements that would place directly on top, nearby, or split clusters, based on the collective weights of those close by.
 
 I would also consider prompting the synthetic generation step to avoid bad seeds, such as collinear and stacking.
