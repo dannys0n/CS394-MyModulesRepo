@@ -63,19 +63,22 @@ Looking at file k4-h6-a1, case 7 shows our best case scenario. nice separation o
 
 Another ideal prompting scenario. 6 servers and 10 hotspots.<br>
 Looking at file k6-h10-a1.5, case 2 also nicely grouped hotspots close together and separated when it can.<br>
+Notice how seeds are all directly on the hotspots. This was a common pattern found in many cases.
 <img width="608" height="449" alt="k4-h10-case2" src="https://github.com/user-attachments/assets/4048c3c4-a04a-4358-86c5-b103e456efe2" />
 
 What didn’t:
 ========================================================================
 It mostly came from a combination of k value being higher than h, and the python library for visualizing voronoi crashing from degenerate seeds. The failures would often occur when some seeds stack on top of each other because of similar values or are entirely collinear.
 
-These issues can easily be resolved manually in a post-processing step. And while these issues were unexpected, they’re easy to detect for prune and jittering.
+These issues can easily be resolved manually in a post-processing step. And while these issues were unexpected, they’re easy to detect for pruning and jittering.
 
 We can see these issues pop up in our test cases, where k was significantly higher than h.<br>
-Looking at file k20-h10-a1, case 6 shows generally sound seeds, but then a lot of seeds went off into no mans land.<br>
+
+Looking at file k20-h10-a1, case 6 shows generally well spaced seeds for hotspots, but then a lot went off into no mans land.<br>
+One hypothesis could be the model prioritized evenly distributing seeds, rather than separating hotspots, possibly due to there being too many to place<br>
 <img width="446" height="442" alt="k20-h10-case6" src="https://github.com/user-attachments/assets/b7730135-13e3-4c93-9519-4c832e6a264f" />
 
-Case 5 appears to separate quite nicely, but this was only after pruning seeds that were stacking on top of each other.<br>
+Case 5 separates quite nicely, but this was only after pruning seeds that were stacking on top of each other.<br>
 <img width="448" height="449" alt="k20-h10-case5" src="https://github.com/user-attachments/assets/330b1cc2-97e6-409f-8ba9-7458a49a8752" />
 
 What I would change:
