@@ -50,7 +50,7 @@ The json structure would be strictly ahhered to. Output values would stay within
 
 What worked:
 ========================================================================
-The requested json structure indeed was respected during my tests. Generally, these seeds looked pretty good when k value was less than h, separating when they can, group and split hotspots. The seeds generated themselves produced some interesting results.
+The requested json structure indeed was respected during my tests. Generally, these seeds looked pretty good when k value was less than h. This allowed seeds to separate, group, and split hotspots when they can. The seeds generated themselves produced some interesting results, as we will see below.
 
 Starting with the most realistic setup for us. 4 servers and 6 hotspots.<br>
 Looking at file k4-h6-a1, case 7 shows our best case scenario. nice separation of far away hotspots, grouping, and splitting very hot ones when necessary.<br>
