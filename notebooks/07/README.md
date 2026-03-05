@@ -50,7 +50,12 @@ The json structure would be strictly ahhered to. Output values would stay within
 
 What worked:
 ========================================================================
-The requested json structure indeed was respected during my tests. Generally, these seeds looked pretty good when k value was less than h. This allowed seeds to separate, group, and split hotspots when they can. The seeds generated themselves produced some interesting results, as we will see below.
+The requested json structure indeed was respected during my tests. Generally, these seeds looked pretty good when k value was less than h. This allowed seeds to separate, group, and split hotspots when they can.<br>
+Note: <br>
+circular outline=hotspot radius<br>
+circular color=hotspot weight<br>
+red x=generated seed<br>
+
 
 Starting with the most realistic setup for us. 4 servers and 6 hotspots.<br>
 Looking at file k4-h6-a1, case 7 shows our best case scenario. nice separation of far away hotspots, grouping, and splitting very hot ones when necessary.<br>
@@ -62,7 +67,7 @@ Looking at file k6-h10-a1.5, case 2 also nicely grouped hotspots close together 
 
 What didn’t:
 ========================================================================
-It mostly came from a combination of k value being higher than h, and the python library for visualizing voronoi crashing from degenerate seeds. The failures would happen often when some seeds stack on top of each other from similar values, or are entirely colinear.
+It mostly came from a combination of k value being higher than h, and the python library for visualizing voronoi crashing from degenerate seeds. The failures would often occur when some seeds stack on top of each other because of similar values or are entirely collinear.
 
 These issues can easily be resolved manually in a post-processing step. And while these issues were unexpected, they’re easy to detect for prune and jittering.
 
